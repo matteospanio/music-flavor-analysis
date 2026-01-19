@@ -12,10 +12,9 @@ Ogni brano ha un vettore target (ground truth) associato:
 
 - Ogni partecipante ascolta 10 brani campionati casualmente da un pool di 20 brani
 - Per ogni brano fornisce un vettore percettivo Likert (1-7):
-
-    ```math
-    \mathbf{p}_{ij} = (salty, sweet, sour, bitter, spicy)
-    ```
+  ```math
+  \mathbf{p}_{ij} = (salty, sweet, sour, bitter, spicy)
+  ```
 
 Dove i = brano, j = partecipante
 
@@ -28,17 +27,15 @@ $H_1$: Esiste una relazione sistematica tra metadate del brano e percezione gust
 ## Analisi dei dati
 ### Preparazione dei dati
 - Preparare il dataset nella forma:
-
-    ```math
-    \{ (\mathbf{t}_i, \mathbf{p}_{ij}) \mid i = 1, \ldots, 20; j = 1, \ldots, N_i \}
-    ```
+  ```math
+  \{ (\mathbf{t}_i, \mathbf{p}_{ij}) \mid i = 1, \ldots, 20; j = 1, \ldots, N_i \}
+  ```
 
   dove $N_i$ è il numero di partecipanti che hanno valutato il brano $i$.
 - Normalizzare perché le scale di valutazione possano essere confrontate (le scale likert sono diverse dai valori target), per questo abbiamo bisogno di fare $z$-score per ciascuna dimensione del vettore percettivo:
-
-    ```math
-    \mathbf{p}_{ij}^{norm} = \frac{\mathbf{p}_{ij} - \mu_j}{\sigma_j}
-    ```
+  ```math
+  \mathbf{p}_{ij}^{norm} = \frac{\mathbf{p}_{ij} - \mu_j}{\sigma_j}
+  ```
 
   dove $\mu_j$ e $\sigma_j$ sono la media e la deviazione standard delle valutazioni per la dimensione $j$.
   Ci aspettiamo che la varianza spuria venga ridotta in questo modo.
@@ -47,14 +44,13 @@ $H_1$: Esiste una relazione sistematica tra metadate del brano e percezione gust
 ### Statistica descrittiva
 #### Per dimensione
 - Calcolare la media e deviazione standard delle valutazioni percettive per ogni dimensione gustativa:
+  ```math
+  \mu_j = \frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} p_{ikj}
+  ```
 
-    ```math
-    \mu_j = \frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} p_{ikj}
-    ```
-
-    ```math
-    \sigma_j = \sqrt{\frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} (p_{ikj} - \mu_j)^2}
-    ```
+  ```math
+  \sigma_j = \sqrt{\frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} (p_{ikj} - \mu_j)^2}
+  ```
 
   dove $M = \sum_{i=1}^{20} N_i$ è il numero totale di valutazioni.
   Cosi facendo vogliamo controllare ceiling e floor effects.
@@ -62,28 +58,24 @@ $H_1$: Esiste una relazione sistematica tra metadate del brano e percezione gust
 
 #### Per brano
 - Per ogni brano i, calcolare il vettore percettivo medio su tutti i partecipanti j che hanno valutato il brano:
-
-    ```math
-    \bar{\mathbf{p}}_i = \frac{1}{N_i} \sum_{j=1}^{N_i} \mathbf{p}_{ij}
-    ```
+  ```math
+  \bar{\mathbf{p}}_i = \frac{1}{N_i} \sum_{j=1}^{N_i} \mathbf{p}_{ij}
+  ```
 
 - Calcolare la distanza tra vettore target e vettore percettivo medio per ogni brano i:
-
-    ```math
-    d_i = \| \mathbf{t}_i - \bar{\mathbf{p}}_i \|
-    ```
+  ```math
+  d_i = \| \mathbf{t}_i - \bar{\mathbf{p}}_i \|
+  ```
 
 - Ottenere la distribuzione delle distanze osservate:
-
-    ```math
-    D_{obs} = \{ d_1, d_2, \ldots, d_{20} \}
-    ```
+  ```math
+  D_{obs} = \{ d_1, d_2, \ldots, d_{20} \}
+  ```
 
 - Calcolare la distanza media osservata:
-
-    ```math
-    \bar{d}_{obs} = \frac{1}{20} \sum_{i=1}^{20} d_i
-    ```
+  ```math
+  \bar{d}_{obs} = \frac{1}{20} \sum_{i=1}^{20} d_i
+  ```
 
 ### Test principale di non-causalità (CORE CLAIM)
 
@@ -91,43 +83,37 @@ $H_1$: Esiste una relazione sistematica tra metadate del brano e percezione gust
 
 - permutation test su distanza target-perceived:
     - Per ogni brano i, calcolare la distanza tra vettore target e vettore percettivo medio:
-
-        ```math
-        d_i = \| \mathbf{t}_i - \bar{\mathbf{p}}_i \|
-        ```
+      ```math
+      d_i = \| \mathbf{t}_i - \bar{\mathbf{p}}_i \|
+      ```
 
     - Calcolare la distanza media osservata:
-
-        ```math
-        \bar{d}_{obs} = \frac{1}{20} \sum_{i=1}^{20} d_i
-        ```
+      ```math
+      \bar{d}_{obs} = \frac{1}{20} \sum_{i=1}^{20} d_i
+      ```
 
     - Creare una distribuzione nulla delle distanze medie tramite permutazione:
         - Per k = 1 a 10.000:
             - Permutare casualmente le associazioni tra brani e valutazioni percettive.
             - Per ogni brano i, calcolare la distanza tra vettore target e vettore percettivo medio permutato:
-
-                ```math
-                d_i^{perm} = \| \mathbf{t}_i - \bar{\mathbf{p}}_i^{perm} \|
-                ```
+              ```math
+              d_i^{perm} = \| \mathbf{t}_i - \bar{\mathbf{p}}_i^{perm} \|
+              ```
 
             - Calcolare la distanza media permutata:
-
-                ```math
-                \bar{d}_{perm}^{(k)} = \frac{1}{20} \sum_{i=1}^{20} d_i^{perm}
-                ```
+              ```math
+              \bar{d}_{perm}^{(k)} = \frac{1}{20} \sum_{i=1}^{20} d_i^{perm}
+              ```
 
         - Ottenere la distribuzione nulla delle distanze medie permutate:
-
-            ```math
-            D_{null} = \{ \bar{d}_{perm}^{(1)}, \bar{d}_{perm}^{(2)}, \ldots, \bar{d}_{perm}^{(10000)} \}
-            ```
+          ```math
+          D_{null} = \{ \bar{d}_{perm}^{(1)}, \bar{d}_{perm}^{(2)}, \ldots, \bar{d}_{perm}^{(10000)} \}
+          ```
 
     - Calcolare il p-value come la proporzione di distanze medie permutate che sono minori o uguali alla distanza media osservata:
-
-        ```math
-        p = \frac{1}{10000} \sum_{k=1}^{10000} I(\bar{d}_{perm}^{(k)} \leq \bar{d}_{obs})
-        ```
+      ```math
+      p = \frac{1}{10000} \sum_{k=1}^{10000} I(\bar{d}_{perm}^{(k)} \leq \bar{d}_{obs})
+      ```
 
       dove I è la funzione indicatrice.
 
