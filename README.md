@@ -48,9 +48,13 @@ $H_1$: Esiste una relazione sistematica tra metadate del brano e percezione gust
 #### Per dimensione
 - Calcolare la media e deviazione standard delle valutazioni percettive per ogni dimensione gustativa:
 
-    $$\mu_j = \frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} p_{ikj}$$
+    $$
+    \mu_j = \frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} p_{ikj}
+    $$
 
-    $$\sigma_j = \sqrt{\frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} (p_{ikj} - \mu_j)^2}$$
+    $$
+    \sigma_j = \sqrt{\frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} (p_{ikj} - \mu_j)^2}
+    $$
 
   dove $M = \sum_{i=1}^{20} N_i$ è il numero totale di valutazioni.
   Cosi facendo vogliamo controllare ceiling e floor effects.
@@ -71,11 +75,15 @@ $H_1$: Esiste una relazione sistematica tra metadate del brano e percezione gust
 
 - Ottenere la distribuzione delle distanze osservate:
 
-    $$D_{obs} = \{ d_1, d_2, \ldots, d_{20} \}$$
+    $$
+    D_{obs} = \{ d_1, d_2, \ldots, d_{20} \}
+    $$
 
 - Calcolare la distanza media osservata:
 
-    $$\bar{d}_{obs} = \frac{1}{20} \sum_{i=1}^{20} d_i$$
+    $$
+    \bar{d}_{obs} = \frac{1}{20} \sum_{i=1}^{20} d_i
+    $$
 
 ### Test principale di non-causalità (CORE CLAIM)
 
@@ -90,7 +98,9 @@ $H_1$: Esiste una relazione sistematica tra metadate del brano e percezione gust
 
     - Calcolare la distanza media osservata:
 
-        $$\bar{d}_{obs} = \frac{1}{20} \sum_{i=1}^{20} d_i$$
+        $$
+        \bar{d}_{obs} = \frac{1}{20} \sum_{i=1}^{20} d_i
+        $$
 
     - Creare una distribuzione nulla delle distanze medie tramite permutazione:
         - Per k = 1 a 10.000:
@@ -103,11 +113,15 @@ $H_1$: Esiste una relazione sistematica tra metadate del brano e percezione gust
 
             - Calcolare la distanza media permutata:
 
-                $$\bar{d}_{perm}^{(k)} = \frac{1}{20} \sum_{i=1}^{20} d_i^{perm}$$
+                $$
+                \bar{d}_{perm}^{(k)} = \frac{1}{20} \sum_{i=1}^{20} d_i^{perm}
+                $$
 
         - Ottenere la distribuzione nulla delle distanze medie permutate:
 
-            $$D_{null} = \{ \bar{d}_{perm}^{(1)}, \bar{d}_{perm}^{(2)}, \ldots, \bar{d}_{perm}^{(10000)} \}$$
+            $$
+            D_{null} = \{ \bar{d}_{perm}^{(1)}, \bar{d}_{perm}^{(2)}, \ldots, \bar{d}_{perm}^{(10000)} \}
+            $$
 
     - Calcolare il p-value come la proporzione di distanze medie permutate che sono minori o uguali alla distanza media osservata:
 
