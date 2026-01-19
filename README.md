@@ -26,31 +26,33 @@ $H_1$: Esiste una relazione sistematica tra metadate del brano e percezione gust
 
 ## Analisi dei dati
 ### Preparazione dei dati
+
 - Preparare il dataset nella forma:
   ```math
   \{ (\mathbf{t}_i, \mathbf{p}_{ij}) \mid i = 1, \ldots, 20; j = 1, \ldots, N_i \}
   ```
-
   dove $N_i$ è il numero di partecipanti che hanno valutato il brano $i$.
+
 - Normalizzare perché le scale di valutazione possano essere confrontate (le scale likert sono diverse dai valori target), per questo abbiamo bisogno di fare $z$-score per ciascuna dimensione del vettore percettivo:
   ```math
   \mathbf{p}_{ij}^{norm} = \frac{\mathbf{p}_{ij} - \mu_j}{\sigma_j}
   ```
-
   dove $\mu_j$ e $\sigma_j$ sono la media e la deviazione standard delle valutazioni per la dimensione $j$.
   Ci aspettiamo che la varianza spuria venga ridotta in questo modo.
+
 - Individuazione di outlier: rimuovere partecipanti che hanno tutte le valutazioni uguali (varianza zero), e.g. che hanno risposto 1 a tutte le domande.
 
 ### Statistica descrittiva
 #### Per dimensione
 - Calcolare la media e deviazione standard delle valutazioni percettive per ogni dimensione gustativa:
-  ```math
-  \mu_j = \frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} p_{ikj}
-  ```
-
-  ```math
-  \sigma_j = \sqrt{\frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} (p_{ikj} - \mu_j)^2}
-  ```
+  - media
+    ```math
+    \mu_j = \frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} p_{ikj}
+    ```
+  - deviazione standard
+    ```math
+    \sigma_j = \sqrt{\frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} (p_{ikj} - \mu_j)^2}
+    ```
 
   dove $M = \sum_{i=1}^{20} N_i$ è il numero totale di valutazioni.
   Cosi facendo vogliamo controllare ceiling e floor effects.
