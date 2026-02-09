@@ -7,3 +7,5 @@
 
 /.quarto/
 **/*.quarto_ipynb
+*.html
+music-flavor-analysis_files/
