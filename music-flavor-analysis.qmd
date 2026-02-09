@@ -1,9 +1,24 @@
 ---
-title: "music-flavor-analysis"
+title: "Sonic seasoning: statistical analysis"
 execute:
   echo: true
   message: false
   warning: false
+author:
+- name: "Valentina Frezzato"
+  email: "valentina.frezzato.1@studenti.unipd.it"
+  affiliation:
+  - name: University of Padova
+    department: Information Engineering
+    city: Padua
+    url: https://www.unipd.it
+- name: "Matteo Spanio"
+  email: "spanio@dei.unipd.it"
+  affiliation:
+  - name: University of Padova
+    department: Information Engineering
+    city: Padua
+    url: https://www.unipd.it
 ---
 
 # Analisi statistica per studio "Musica e Gusto"
@@ -37,8 +52,8 @@ Importazione delle librerie utilizzate per l'analisi dei dati:
 
 ```{r}
 
-library(tidyverse) 
-library(janitor) 
+library(tidyverse)
+library(janitor)
 library(readxl)
 library(gt)
 ```
@@ -153,7 +168,7 @@ target_z %>%
 
 ```
 
-### Statistica descrittiva 
+### Statistica descrittiva
 #### Per dimensione gustativa
 
 Calcolo della media e della deviazione standard delle valutazioni percettive per ogni dimensione gustativa.
@@ -251,7 +266,7 @@ merged <- p_mean_wide %>%
 # check: 20 righe
 dim(merged)
 ```
- 
+
 ```{r}
 p_mean_wide %>%
   arrange(brano) %>%
