@@ -168,6 +168,61 @@ target_z %>%
 
 ```
 
+```{r}
+# PCA sui vettori target normalizzati
+tgt_pca_data <- target_z %>% select(acido, amaro, dolce, piccante, salato)
+tgt_pca_res <- prcomp(tgt_pca_data, center = TRUE, scale. = TRUE)
+
+tgt_var_expl <- summary(tgt_pca_res)$importance[2, ] * 100
+
+tgt_pca_df <- tibble(
+  id = seq_len(nrow(target_z)),
+  brano = target_z$brano,
+  PC1 = tgt_pca_res$x[, 1],
+  PC2 = tgt_pca_res$x[, 2]
+)
+
+tgt_loadings <- as.data.frame(tgt_pca_res$rotation[, 1:2])
+tgt_loadings$variable <- rownames(tgt_loadings)
+tgt_scale_factor <- max(abs(tgt_pca_df$PC1), abs(tgt_pca_df$PC2)) /
+  max(abs(tgt_loadings$PC1), abs(tgt_loadings$PC2)) * 0.8
+
+ggplot(tgt_pca_df, aes(x = PC1, y = PC2, shape = factor(id))) +
+  geom_point(size = 3) +
+  geom_text(aes(label = id), nudge_y = 0.15, size = 3) +
+  geom_segment(
+    data = tgt_loadings,
+    aes(x = 0, y = 0, xend = PC1 * tgt_scale_factor, yend = PC2 * tgt_scale_factor),
+    arrow = arrow(length = unit(0.2, "cm")),
+    color = "red", linewidth = 0.7,
+    inherit.aes = FALSE
+  ) +
+  geom_text(
+    data = tgt_loadings,
+    aes(x = PC1 * tgt_scale_factor * 1.12, y = PC2 * tgt_scale_factor * 1.12, label = variable),
+    color = "red", size = 3.5, fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  scale_shape_manual(
+    values = rep(16, nrow(tgt_pca_df)),
+    labels = setNames(tgt_pca_df$brano, tgt_pca_df$id),
+    name = "Brano"
+  ) +
+  guides(shape = guide_legend(ncol = 1, override.aes = list(size = 0))) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    legend.text = element_text(size = 7),
+    legend.title = element_text(size = 9, face = "bold"),
+    legend.key.size = unit(0.4, "cm")
+  ) +
+  labs(
+    title = "PCA dei vettori target normalizzati per brano",
+    x = paste0("PC1 (", round(tgt_var_expl[1], 1), "%)"),
+    y = paste0("PC2 (", round(tgt_var_expl[2], 1), "%)")
+  )
+```
+
 ### Statistica descrittiva
 #### Per dimensione gustativa
 
@@ -285,6 +340,68 @@ p_mean_wide %>%
   )
 ```
 
+#### PCA dei vettori percettivi medi
+
+Visualizzazione dei vettori percettivi medi nello spazio delle prime due componenti principali (PCA) per esplorare la struttura dei brani nello spazio gustativo.
+
+```{r}
+# PCA sulle 5 dimensioni gustative
+pca_data <- p_mean_wide %>% select(acido, amaro, dolce, piccante, salato)
+pca_res <- prcomp(pca_data, center = TRUE, scale. = TRUE)
+
+# Varianza spiegata
+var_expl <- summary(pca_res)$importance[2, ] * 100
+
+# Dataframe per il plot
+pca_df <- tibble(
+  id = seq_len(nrow(p_mean_wide)),
+  brano = p_mean_wide$brano,
+  PC1 = pca_res$x[, 1],
+  PC2 = pca_res$x[, 2]
+)
+
+# Loadings (vettori delle variabili) scalati per la visualizzazione
+loadings <- as.data.frame(pca_res$rotation[, 1:2])
+loadings$variable <- rownames(loadings)
+scale_factor <- max(abs(pca_df$PC1), abs(pca_df$PC2)) /
+  max(abs(loadings$PC1), abs(loadings$PC2)) * 0.8
+
+ggplot(pca_df, aes(x = PC1, y = PC2, shape = factor(id))) +
+  geom_point(size = 3) +
+  geom_text(aes(label = id), nudge_y = 0.15, size = 3) +
+  geom_segment(
+    data = loadings,
+    aes(x = 0, y = 0, xend = PC1 * scale_factor, yend = PC2 * scale_factor),
+    arrow = arrow(length = unit(0.2, "cm")),
+    color = "red", linewidth = 0.7,
+    inherit.aes = FALSE
+  ) +
+  geom_text(
+    data = loadings,
+    aes(x = PC1 * scale_factor * 1.12, y = PC2 * scale_factor * 1.12, label = variable),
+    color = "red", size = 3.5, fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  scale_shape_manual(
+    values = rep(16, nrow(pca_df)),
+    labels = setNames(pca_df$brano, pca_df$id),
+    name = "Brano"
+  ) +
+  guides(shape = guide_legend(ncol = 1, override.aes = list(size = 0))) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    legend.text = element_text(size = 7),
+    legend.title = element_text(size = 9, face = "bold"),
+    legend.key.size = unit(0.4, "cm")
+  ) +
+  labs(
+    title = "PCA dei vettori percettivi medi per brano",
+    x = paste0("PC1 (", round(var_expl[1], 1), "%)"),
+    y = paste0("PC2 (", round(var_expl[2], 1), "%)")
+  )
+```
+
 
 - Calcolo della distanza tra vettore target e vettore percettivo medio per ogni brano i:
   $$
@@ -346,6 +463,62 @@ dist_per_brano %>%
     )
   )
 
+```
+
+#### Consistenza tra spazio target e percettivo
+
+Per verificare che la struttura geometrica dei brani sia preservata tra lo spazio target e quello percettivo, si utilizzano due test complementari:
+
+- **Mantel test**: verifica la correlazione tra le matrici di distanza 20×20 calcolate nei due spazi (permutation test).
+- **Procrustes analysis (PROTEST)**: misura la sovrapponibilità delle due configurazioni dopo allineamento ottimale (rotazione, traslazione, scala).
+
+```{r}
+library(vegan)
+
+# Preparazione matrici ordinate per brano
+brani_ord <- sort(unique(merged$brano))
+
+mat_target <- merged %>%
+  arrange(brano) %>%
+  select(acido_tgt, amaro_tgt, dolce_tgt, piccante_tgt, salato_tgt) %>%
+  as.matrix()
+
+mat_perc <- merged %>%
+  arrange(brano) %>%
+  select(acido_perc, amaro_perc, dolce_perc, piccante_perc, salato_perc) %>%
+  as.matrix()
+
+rownames(mat_target) <- rownames(mat_perc) <- brani_ord
+
+# Matrici di distanza
+dist_target <- dist(mat_target)
+dist_perc <- dist(mat_perc)
+
+# Mantel test
+set.seed(123)
+mantel_res <- mantel(dist_target, dist_perc, method = "pearson", permutations = 9999)
+
+# Procrustes analysis
+set.seed(123)
+procrustes_res <- protest(mat_target, mat_perc, permutations = 9999)
+```
+
+```{r}
+tibble(
+  Test = c("Mantel", "Procrustes (PROTEST)"),
+  Statistica = c(
+    paste0("r = ", round(mantel_res$statistic, 4)),
+    paste0("m² = ", round(1 - procrustes_res$ss, 4))
+  ),
+  `p-value` = c(mantel_res$signif, procrustes_res$signif)
+) %>%
+  gt() %>%
+  tab_header(
+    title = "Test di consistenza tra spazio target e percettivo",
+    subtitle = "Mantel test e Procrustes analysis"
+  ) %>%
+  fmt_number(columns = `p-value`, decimals = 4) %>%
+  cols_align(align = "center", everything())
 ```
 
 ### Test principale di non-causalità (CORE CLAIM)
