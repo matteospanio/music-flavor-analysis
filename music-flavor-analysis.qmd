@@ -58,6 +58,114 @@ library(readxl)
 library(gt)
 ```
 
+```{r}
+#importazione dei dati
+raw_df <- read.csv("data/data.csv", stringsAsFactors = FALSE) %>%
+  clean_names()
+```
+
+### Analisi demografica
+```{r}
+# ============================
+# Descrizione del campione (statistiche demografiche)
+# ============================
+
+demo <- raw_df %>%
+  distinct(
+    participant,
+    gender, ethnicity, age,
+    hearing_experience, eating_experience,
+    hearing_impairments, taste_impairments,
+    device
+  ) %>%
+  mutate(
+    age = as.numeric(age),
+
+    gender = recode(as.integer(gender),
+      `1` = "Maschio", `2` = "Femmina",
+      `3` = "Altro", `4` = "Preferisco non rispondere"
+    ),
+
+    hearing_experience = recode(as.integer(hearing_experience),
+      `1` = "Professionista", `2` = "Amatore", `3` = "Non esperto"
+    ),
+
+    eating_experience = recode(as.integer(eating_experience),
+      `1` = "Professionista", `2` = "Amatore", `3` = "Non esperto"
+    ),
+
+    hearing_impairments = recode(as.integer(hearing_impairments),
+      `1` = "Sì", `2` = "No"
+    ),
+
+    taste_impairments = recode(as.integer(taste_impairments),
+      `1` = "Sì", `2` = "No"
+    ),
+
+    device = recode(as.integer(device),
+      `1` = "Cuffie",
+      `2` = "Altoparlanti del dispositivo",
+      `3` = "Impianto Hi-Fi",
+      `4` = "Altro"
+    )
+  )
+
+N <- nrow(demo)
+
+table_demographics <- bind_rows(
+  tibble(Variabile = "Partecipanti (N)", Valore = as.character(N)),
+  tibble(
+    Variabile = c(
+      "Età: media (DS)",
+      "Età: min–max"
+    ),
+    Valore = c(
+      paste0(round(mean(demo$age, na.rm = TRUE), 1),
+             " (", round(sd(demo$age, na.rm = TRUE), 1), ")"),
+      paste0(min(demo$age, na.rm = TRUE), "–", max(demo$age, na.rm = TRUE))
+    )
+  ),
+  demo %>% count(gender) %>%
+    mutate(Variabile = paste("Genere:", gender),
+           Valore = paste0(n, " (", round(100*n/sum(n),1), "%)")) %>%
+    select(Variabile, Valore),
+
+  demo %>% count(hearing_experience) %>%
+    mutate(Variabile = paste("Esperienza musicale:", hearing_experience),
+           Valore = paste0(n, " (", round(100*n/sum(n),1), "%)")) %>%
+    select(Variabile, Valore),
+
+  demo %>% count(eating_experience) %>%
+    mutate(Variabile = paste("Esperienza enogastronomica:", eating_experience),
+           Valore = paste0(n, " (", round(100*n/sum(n),1), "%)")) %>%
+    select(Variabile, Valore),
+
+  demo %>% count(hearing_impairments) %>%
+    mutate(Variabile = paste("Disturbi uditivi:", hearing_impairments),
+           Valore = paste0(n, " (", round(100*n/sum(n),1), "%)")) %>%
+    select(Variabile, Valore),
+
+  demo %>% count(taste_impairments) %>%
+    mutate(Variabile = paste("Disturbi gustativi:", taste_impairments),
+           Valore = paste0(n, " (", round(100*n/sum(n),1), "%)")) %>%
+    select(Variabile, Valore),
+
+  demo %>% count(device) %>%
+    mutate(Variabile = paste("Dispositivo:", device),
+           Valore = paste0(n, " (", round(100*n/sum(n),1), "%)")) %>%
+    select(Variabile, Valore)
+)
+
+table_demographics %>%
+  gt() %>%
+  tab_header(
+    title = "Descrizione del campione",
+    subtitle = "Statistiche demografiche e caratteristiche dei partecipanti"
+  )
+
+```
+
+
 ### Preparazione dei dati
 
 Preparazione del dataset nella forma: $$
@@ -69,11 +177,7 @@ Preparazione del dataset nella forma: $$
 Importazione dei vettori percettivi (dati da Psytoolkit) e preparazione del dataset dei partecipanti nella forma (participant, brano, gusto, rating)
 
 ```{r}
-
-raw <- read.csv("data/data.csv", stringsAsFactors = FALSE) %>%
-  clean_names()
-
-d_long <- raw %>%
+d_long <- raw_df %>%
   select(participant, matches("_[1-5]$")) %>%
   pivot_longer(
     cols = -participant,
@@ -124,31 +228,33 @@ Normalizzare perché le scale di valutazione possano essere confrontate (le scal
 ```{r}
 d_long <- d_long %>%
   group_by(gusto) %>%
-  mutate(rating_z = scale(rating)) %>%
+  mutate(rating_z = as.numeric(scale(rating))) %>%
   ungroup()
 
-summary_norm <- d_long %>%
-  group_by(gusto) %>%
-  summarise(
-    Mean = mean(rating_z),
-    SD = sd(rating_z),
-    .groups = "drop"
+#grafico distribuzioni per gusto
+ggplot(d_long, aes(x = gusto, y = rating_z)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.15, size = 0.8) +
+  theme_minimal() +
+  labs(
+    title = "Distribuzione dei rating normalizzati (z-score) per gusto",
+    subtitle = "Linea tratteggiata = media 0; boxplot + punti (valutazioni individuali)",
+    x = "Gusto",
+    y = "Rating normalizzato (z-score)"
   )
 
-#tabella
-summary_norm %>%
-  gt() %>%
-  tab_header(
-    title = "Normalizzazione dei vettori percettivi",
-    subtitle = "Media e deviazione standard degli z-score per ciascun gusto"
-  ) %>%
-  fmt_number(
-    columns = c(Mean, SD),
-    decimals = 3
-  ) %>%
-  cols_align(
-    align = "center",
-    everything()
+#grafico versione alternativa
+ggplot(d_long, aes(x = rating_z)) +
+  geom_density() +
+  facet_wrap(~ gusto, scales = "free_y") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  theme_minimal() +
+  labs(
+    title = "Distribuzione dei rating normalizzati (z-score) per gusto",
+    subtitle = "Linea tratteggiata = media 0",
+    x = "Rating normalizzato (z-score)",
+    y = "Densità"
   )
 
 ```
@@ -322,6 +428,8 @@ merged <- p_mean_wide %>%
 dim(merged)
 ```
 
+
+
 ```{r}
 p_mean_wide %>%
   arrange(brano) %>%
@@ -339,6 +447,93 @@ p_mean_wide %>%
     everything()
   )
 ```
+
+#### Matrice di correlazione tra vettori percettivi e vettori target
+
+Heatmap delle distanze euclidee tra vettori percettivi medi e vettori target per ciascun brano, al fine di identificare le corrispondenze più strette tra percezione e metadati.
+
+```{r}
+# ============================
+# Matrice 20x20: distanze euclidee (perc_i vs target_j)
+# ============================
+
+# Matrici (20x5) nello stesso spazio normalizzato (z-score)
+mat_perc <- merged %>%
+  arrange(brano) %>%
+  select(acido_perc, amaro_perc, dolce_perc, piccante_perc, salato_perc) %>%
+  as.matrix()
+
+mat_tgt <- merged %>%
+  arrange(brano) %>%
+  select(acido_tgt, amaro_tgt, dolce_tgt, piccante_tgt, salato_tgt) %>%
+  as.matrix()
+
+brani <- merged %>% arrange(brano) %>% pull(brano)
+
+rownames(mat_perc) <- brani
+rownames(mat_tgt)  <- brani
+
+# Calcolo distanze: D[i,j] = || perc_i - target_j ||
+D <- as.matrix(dist(rbind(mat_perc, mat_tgt)))
+D_pt <- D[brani, brani]  # righe = perc (brani), colonne = target (brani)
+
+# Long format per heatmap
+df_heat <- as.data.frame(as.table(D_pt)) %>%
+  rename(
+    brano_percepito = Var1,
+    brano_target = Var2,
+    distanza = Freq
+  )
+
+# Best match (target più vicino) per ogni brano percepito
+best_match <- df_heat %>%
+  group_by(brano_percepito) %>%
+  slice_min(order_by = distanza, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(match_corretto = (brano_percepito == brano_target))
+
+# Heatmap: più scuro = più vicino (distanza minore)
+ggplot(df_heat, aes(x = brano_target, y = brano_percepito, fill = distanza)) +
+  geom_tile() +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid = element_blank()
+  ) +
+  labs(
+    title = "Heatmap delle distanze: vettori percettivi vs vettori target",
+    subtitle = "Ogni cella = distanza euclidea tra perc(brano i) e target(brano j); valori più bassi = maggiore somiglianza",
+    x = "Vettore target",
+    y = "Vettore percettivo medio"
+  )
+
+# Tabella: per ogni brano percepito, qual è il target più vicino
+best_match %>%
+  select(brano_percepito, brano_target, distanza, match_corretto) %>%
+  arrange(distanza) %>%
+  gt() %>%
+  tab_header(
+    title = "Target più vicino per ciascun brano percepito",
+    subtitle = "Minimo di riga della matrice delle distanze"
+  ) %>%
+  fmt_number(columns = distanza, decimals = 3) %>%
+  cols_label(
+    brano_percepito = "Brano (percettivo)",
+    brano_target = "Target più vicino",
+    distanza = "Distanza",
+    match_corretto = "Match corretto (diagonale)"
+  ) %>%
+  cols_align(everything(), align = "center") %>%
+  tab_source_note(
+    source_note = paste0(
+      "Accuratezza (match sulla diagonale): ",
+      sum(best_match$match_corretto), "/", nrow(best_match),
+      " = ", round(mean(best_match$match_corretto) * 100, 1), "%"
+    )
+  )
+
+```
+
 
 #### PCA dei vettori percettivi medi
 
@@ -462,6 +657,60 @@ dist_per_brano %>%
       round(media_distanza, 3)
     )
   )
+
+```
+
+#### Distanza media ponderata per numero di valutazioni
+
+Poiché il numero di valutazioni per brano non è uniforme, si calcola una versione ponderata della distanza media osservata, al fine di tenere conto della diversa affidabilità delle stime dei vettori percettivi medi.
+
+Sia $N_i$ il numero di partecipanti che hanno valutato il brano $i$, con
+$$
+\sum_{i=1}^{20} N_i = M,
+$$
+dove $M$ è il numero totale di valutazioni a livello di brano.
+
+Si definisce il peso associato al brano $i$ come:
+$$
+w_i = \frac{N_i}{M},
+$$
+tale che:
+$$
+\sum_{i=1}^{20} w_i = 1.
+$$
+
+La distanza media ponderata tra i vettori target e i vettori percettivi medi è quindi definita come:
+$$
+\bar{d}_{w} = \sum_{i=1}^{20} w_i \, d_i
+= \sum_{i=1}^{20} w_i \, \| \mathbf{t}_i - \bar{\mathbf{p}}_i \|.
+$$
+
+Questa quantità assegna un contributo maggiore ai brani stimati su un numero più elevato di valutazioni, consentendo di verificare la robustezza dei risultati rispetto allo sbilanciamento nel numero di ascolti per brano.
+
+```{r}
+# Numero di valutazioni per ciascun brano
+n_per_brano <- d_long %>%
+  distinct(participant, brano) %>%
+  count(brano, name = "N_i")
+# Unione con le distanze e calcolo dei pesi
+dist_weighted <- dist_per_brano %>%
+  left_join(n_per_brano, by = "brano") %>%
+  mutate(peso = N_i / sum(N_i))
+
+# Distanza media ponderata
+d_obs_weighted <- sum(dist_weighted$d * dist_weighted$peso)
+
+tibble(
+  Metodo = c("Media non ponderata", "Media ponderata per N_i"),
+  Distanza_media = c(media_distanza, d_obs_weighted)
+) %>%
+  gt() %>%
+  tab_header(
+    title = "Confronto tra distanza media osservata",
+    subtitle = "Media semplice vs media ponderata per numero di valutazioni"
+  ) %>%
+  fmt_number(columns = Distanza_media, decimals = 4) %>%
+  cols_align(everything(), align = "center")
 
 ```
 
@@ -593,21 +842,31 @@ for (k in 1:n_perm) {
     ) %>%
     ungroup()
 
-  d_perm_means[k] <- mean(d_k$d)
+  #d_perm_means[k] <- mean(d_k$d)
+  d_perm_means[k] <- sum(d_k$d * dist_weighted$peso)
+
 }
 
 Dnull <- d_perm_means
-p_value <- mean(Dnull <= d_obs)
+#p_value <- mean(Dnull <= d_obs)
+p_value <- mean(Dnull <= d_obs_weighted)
 
 ```
 
 ```{r}
+p_value_table <- ifelse(
+  p_value < 0.001,
+  "<<0.001",
+  formatC(p_value, format = "f", digits = 4)
+)
+
 risultati_perm <- tibble::tibble(
   `Permutazioni` = n_perm,
   `Distanza media osservata` = d_obs,
+  `Distanza media ponderata` = d_obs_weighted,
   `Media nulla` = mean(Dnull),
   `SD nulla` = sd(Dnull),
-  `p-value` = p_value
+  `p-value` = p_value_table
 )
 
 risultati_perm %>%
@@ -617,10 +876,11 @@ risultati_perm %>%
     subtitle = "Confronto tra distanza media osservata e distribuzione nulla"
   ) %>%
   fmt_number(
-    columns = c(`Distanza media osservata`, `Media nulla`, `SD nulla`, `p-value`),
+    columns = c(`Distanza media osservata`, `Media nulla`, `SD nulla`),
     decimals = 4
   ) %>%
   cols_align(everything(), align = "center")
+
 ```
 
 ```{r}
@@ -628,9 +888,16 @@ library(ggplot2)
 
 df_null <- data.frame(d = Dnull)
 
+p_value_label <- ifelse(
+  p_value < 0.001,
+  "p-value << 0.001",
+  paste0("p-value = ", signif(p_value, 3))
+)
+
+
 ggplot(df_null, aes(x = d)) +
   geom_histogram(binwidth = 0.02) +
-  geom_vline(xintercept = d_obs, linetype = "dashed", linewidth = 1) +
+  geom_vline(xintercept = d_obs_weighted, linetype = "dashed", linewidth = 1) +
   geom_histogram(
     data = subset(df_null, d <= d_obs),
     aes(x = d),
@@ -638,14 +905,52 @@ ggplot(df_null, aes(x = d)) +
   ) +
   theme_minimal() +
   labs(
-    title = "Permutation test: distribuzione nulla della distanza media",
-    subtitle = paste0("Linea tratteggiata = osservato (", round(d_obs, 3),
-                      "), p-value = ", signif(p_value, 3)),
-    x = "Distanza media permutata",
-    y = "Frequenza"
-  )
+  title = "Permutation test: distribuzione nulla della distanza media",
+  subtitle = paste0(
+    "Linea tratteggiata = distanza media ponderata osservata (",
+    round(d_obs_weighted, 3),
+    "), ",
+    p_value_label
+  ),
+  x = "Distanza media permutata",
+  y = "Frequenza"
+)
+
 ```
 
 
 Essendo p < 0.05 possiamo rifiutare l’ipotesi $H_0$ e concludere che esista
 una relazione sistematica tra le metadate del brano e la percezione gustativa.
+
+
+#### Quantificazione dell’effetto misurato (effect size)
+
+L’effect size è definito come uno z-score rispetto alla distribuzione nulla delle distanze medie permutate:
+
+$$
+z_{\text{eff}} = \frac{\mu_{\text{null}} - \bar{d}_{\text{obs}}}{\sigma_{\text{null}}},
+$$
+
+dove $\mu_{\text{null}}$ e $\sigma_{\text{null}}$ sono rispettivamente la media e la deviazione standard della distribuzione nulla, e $\bar{d}_{\text{obs}}$ è la distanza media osservata (ponderata).
+
+```{r}
+# (Mean of Null - Observed) / SD of Null 
+#effect_size_z <- (mean(Dnull) - d_obs) / sd(Dnull)
+effect_size_z <- (mean(Dnull) - d_obs_weighted) / sd(Dnull)
+
+#tabella
+tibble(
+  `Effect size (z)` = effect_size_z
+) %>%
+  gt() %>%
+  tab_header(
+    title = "Ampiezza dell’effetto",
+    subtitle = "Z-score rispetto alla distribuzione nulla"
+  ) %>%
+  fmt_number(columns = `Effect size (z)`, decimals = 3) %>%
+  cols_align(everything(), align = "center")
+
+```
+
+L’effect-size risulta elevato, indicando che la distanza media osservata è di circa $`r round(effect_size_z, 2)`$ deviazioni standard inferiore a quella attesa sotto l’ipotesi nulla. Questo risultato suggerisce che la relazione osservata tra vettori target e vettori percettivi non è solo statisticamente significativa, ma anche di rilevanza sostanziale.
+
