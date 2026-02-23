@@ -19,162 +19,292 @@ author:
     department: Information Engineering
     city: Padua
     url: https://www.unipd.it
+editor: 
+  markdown: 
+    wrap: 72
 ---
 
-# Analisi statistica per studio "Musica e Gusto"
+# Analisi statistica per lo studio "Musica e gusto"
 
-## Formalizzazione
+## Introduzione
 
-Ogni brano ha un vettore target (ground truth) associato:
+Questo documento riporta l’analisi statistica completa dello studio
+“Musica e Gusto", che indaga la relazione tra le caratteristiche
+gustative associate ai brani musicali da un sistema di raccomandazione
+musicale per il sonic seasoning e la percezione gustativa dei
+partecipanti all'esperimento.
 
-$$
-\mathbf{t}_i = (salty, sweet, sour, bitter, spicy)
-$$
+L’obiettivo è documentare in modo trasparente e riproducibile i passaggi
+dell’analisi, dal preprocessing dei dati ai test statistici principali.
 
-(metadata del dataset / query target)
+Il file è strutturato come un report eseguibile: il codice è organizzato
+in sezioni successive e accompagnato da brevi commenti interpretativi.
 
--   Ogni partecipante ascolta 10 brani campionati casualmente da un pool di 20 brani
--   Per ogni brano fornisce un vettore percettivo Likert (1-7): $$
-    \mathbf{p}_{ij} = (salty, sweet, sour, bitter, spicy)
-    $$
+## Setup dell’ambiente
 
-Dove i = brano, j = partecipante
+In questa sezione vengono caricate le librerie utilizzate per l’analisi
+dei dati e impostate le opzioni necessarie per garantire la
+riproducibilità del report.
 
-## Ipotesi
-
-$H_0$: Il vettore percettivo non e' correlato al vettore target (associazione casuale)
-
-$H_1$: Esiste una relazione sistematica tra metadate del brano e percezione gustativa
-
-## Analisi dei dati
-
-Importazione delle librerie utilizzate per l'analisi dei dati:
+### Librerie e opzioni globali
 
 ```{r}
-
+# Librerie per manipolazione dati e visualizzazione
 library(tidyverse)
 library(janitor)
 library(readxl)
 library(gt)
+library(scales)
+library(vegan)
+library(ggplot2)
+library(forcats)
+
+# Opzioni globali
+set.seed(123)
 ```
 
+### Importazione dei dati
+
 ```{r}
-#importazione dei dati
+# importazione dei dati
 raw_df <- read.csv("data/data.csv", stringsAsFactors = FALSE) %>%
   clean_names()
 ```
 
-### Analisi demografica
-```{r}
-# ============================
-# Descrizione del campione (statistiche demografiche)
-# ============================
+## Descrizione del campione
 
-demo <- raw_df %>%
+In questa sezione viene riportata una descrizione del campione dei
+partecipanti allo studio, sulla base delle informazioni demografiche e
+delle caratteristiche individuali raccolte tramite questionario. Le
+statistiche sono presentate in forma tabellare al fine di fornire una
+panoramica completa del campione analizzato.
+
+```{r echo=FALSE}
+# 1) dataframe per tabelle demografiche
+demo_df <- raw_df %>%
   distinct(
     participant,
-    gender, ethnicity, age,
-    hearing_experience, eating_experience,
-    hearing_impairments, taste_impairments,
+    age,
+    gender,
+    ethnicity,
+    eating_experience,
+    hearing_experience,
+    hearing_impairments,
+    taste_impairments,
     device
-  ) %>%
-  mutate(
-    age = as.numeric(age),
+  )
 
+# 2) riepilogo età
+age_summary <- demo_df %>%
+  summarise(
+    N = sum(!is.na(age)),
+    Media = round(mean(age, na.rm = TRUE), 1),
+    Deviazione_Standard = round(sd(age, na.rm = TRUE), 1),
+    Min = min(age, na.rm = TRUE),
+    Max = max(age, na.rm = TRUE)
+  )
+
+# 3) funzione generale per tabelle: conteggi e percentuali (rispetta ordine factor)
+make_freq_table <- function(df, var, var_label) {
+  df %>%
+    count({{ var }}, name = "n") %>%
+    arrange({{ var }}) %>%  # se è factor, usa l'ordine dei livelli
+    mutate(
+      Percentuale = round(100 * n / sum(n), 1),
+      Valore = paste0(n, " (", Percentuale, "%)")
+    ) %>%
+    select({{ var }}, Valore) %>%
+    gt() %>%
+    cols_label(
+      !!rlang::as_name(rlang::ensym(var)) := var_label,
+      Valore = "N (%)"
+    ) %>%
+    cols_align(align = "left", columns = 1) %>%
+    cols_align(align = "center", columns = -1)
+}
+
+# 4) ricodifica delle variabili (da codici numerici a etichette)
+demo_df <- demo_df %>%
+  mutate(
     gender = recode(as.integer(gender),
-      `1` = "Maschio", `2` = "Femmina",
-      `3` = "Altro", `4` = "Preferisco non rispondere"
+      `1` = "Maschio",
+      `2` = "Femmina",
+      `3` = "Altro",
+      `4` = "Preferisco non rispondere",
+      .default = NA_character_
+    ),
+
+    ethnicity = recode(as.integer(ethnicity),
+      `1`  = "Indiano d'America, nativo dell'Alaska e/o indigeno",
+      `2`  = "Arabo-americano, mediorientale o nordafricano",
+      `3`  = "Asiatico o asiatico-americano",
+      `4`  = "Nero o afroamericano",
+      `5`  = "Bi/Multi-razziale",
+      `6`  = "Origine latina/a/x o spagnola",
+      `7`  = "Nativo hawaiano o di altre isole del Pacifico",
+      `8`  = "Sud-est asiatico",
+      `9`  = "Bianco/europeo americano",
+      `10` = "Non presente in lista",
+      `11` = "Preferisco non rispondere",
+      .default = NA_character_
     ),
 
     hearing_experience = recode(as.integer(hearing_experience),
-      `1` = "Professionista", `2` = "Amatore", `3` = "Non esperto"
+      `1` = "Professionista",
+      `2` = "Amatore",
+      `3` = "Non esperto",
+      .default = NA_character_
     ),
 
     eating_experience = recode(as.integer(eating_experience),
-      `1` = "Professionista", `2` = "Amatore", `3` = "Non esperto"
+      `1` = "Professionista",
+      `2` = "Amatore",
+      `3` = "Non esperto",
+      .default = NA_character_
     ),
 
     hearing_impairments = recode(as.integer(hearing_impairments),
-      `1` = "Sì", `2` = "No"
+      `1` = "Sì",
+      `2` = "No",
+      .default = NA_character_
     ),
 
     taste_impairments = recode(as.integer(taste_impairments),
-      `1` = "Sì", `2` = "No"
+      `1` = "Sì",
+      `2` = "No",
+      .default = NA_character_
     ),
 
     device = recode(as.integer(device),
       `1` = "Cuffie",
       `2` = "Altoparlanti del dispositivo",
       `3` = "Impianto Hi-Fi",
-      `4` = "Altro"
+      `4` = "Altro",
+      .default = NA_character_
     )
-  )
-
-N <- nrow(demo)
-
-table_demographics <- bind_rows(
-  tibble(Variabile = "Partecipanti (N)", Valore = as.character(N)),
-  tibble(
-    Variabile = c(
-      "Età: media (DS)",
-      "Età: min–max"
+  ) %>%
+  # (opzionale ma consigliato) rimuove spazi invisibili nelle etichette
+  mutate(across(
+    c(gender, ethnicity, eating_experience, hearing_experience,
+      hearing_impairments, taste_impairments, device),
+    ~ trimws(.x)
+  )) %>%
+  # 5) imposta l'ordine "come da questionario" SENZA creare NA
+  mutate(
+    gender = fct_relevel(gender,
+      "Maschio", "Femmina", "Altro", "Preferisco non rispondere"
     ),
-    Valore = c(
-      paste0(round(mean(demo$age, na.rm = TRUE), 1),
-             " (", round(sd(demo$age, na.rm = TRUE), 1), ")"),
-      paste0(min(demo$age, na.rm = TRUE), "–", max(demo$age, na.rm = TRUE))
+    hearing_experience = fct_relevel(hearing_experience,
+      "Professionista", "Amatore", "Non esperto"
+    ),
+    eating_experience = fct_relevel(eating_experience,
+      "Professionista", "Amatore", "Non esperto"
+    ),
+    hearing_impairments = fct_relevel(hearing_impairments,
+      "Sì", "No", "Preferisco non rispondere"
+    ),
+    taste_impairments = fct_relevel(taste_impairments,
+      "Sì", "No", "Preferisco non rispondere"
+    ),
+    device = fct_relevel(device,
+      "Cuffie", "Altoparlanti del dispositivo", "Impianto Hi-Fi", "Altro"
+    ),
+    ethnicity = fct_relevel(ethnicity,
+      "Indiano d'America, nativo dell'Alaska e/o indigeno",
+      "Arabo-americano, mediorientale o nordafricano",
+      "Asiatico o asiatico-americano",
+      "Nero o afroamericano",
+      "Bi/Multi-razziale",
+      "Origine latina/a/x o spagnola",
+      "Nativo hawaiano o di altre isole del Pacifico",
+      "Sud-est asiatico",
+      "Bianco/europeo americano",
+      "Non presente in lista",
+      "Preferisco non rispondere"
     )
-  ),
-  demo %>% count(gender) %>%
-    mutate(Variabile = paste("Genere:", gender),
-           Valore = paste0(n, " (", round(100*n/sum(n),1), "%)")) %>%
-    select(Variabile, Valore),
-
-  demo %>% count(hearing_experience) %>%
-    mutate(Variabile = paste("Esperienza musicale:", hearing_experience),
-           Valore = paste0(n, " (", round(100*n/sum(n),1), "%)")) %>%
-    select(Variabile, Valore),
-
-  demo %>% count(eating_experience) %>%
-    mutate(Variabile = paste("Esperienza enogastronomica:", eating_experience),
-           Valore = paste0(n, " (", round(100*n/sum(n),1), "%)")) %>%
-    select(Variabile, Valore),
-
-  demo %>% count(hearing_impairments) %>%
-    mutate(Variabile = paste("Disturbi uditivi:", hearing_impairments),
-           Valore = paste0(n, " (", round(100*n/sum(n),1), "%)")) %>%
-    select(Variabile, Valore),
-
-  demo %>% count(taste_impairments) %>%
-    mutate(Variabile = paste("Disturbi gustativi:", taste_impairments),
-           Valore = paste0(n, " (", round(100*n/sum(n),1), "%)")) %>%
-    select(Variabile, Valore),
-
-  demo %>% count(device) %>%
-    mutate(Variabile = paste("Dispositivo:", device),
-           Valore = paste0(n, " (", round(100*n/sum(n),1), "%)")) %>%
-    select(Variabile, Valore)
-)
-
-table_demographics %>%
-  gt() %>%
-  tab_header(
-    title = "Descrizione del campione",
-    subtitle = "Statistiche demografiche e caratteristiche dei partecipanti"
   )
-
 ```
 
+**Età**
 
-### Preparazione dei dati
+```{r echo=FALSE}
 
-Preparazione del dataset nella forma: $$
-  \{ (\mathbf{t}_i, \mathbf{p}_{ij}) \mid i = 1, \ldots, 20; j = 1, \ldots, N_i \}
-  $$ dove $N_i$ è il numero di partecipanti che hanno valutato il brano $i$.
+tibble(
+  Età = c("Media (DS)", "Min–Max"),
+  Valore = c(
+    paste0(age_summary$Media, " (", age_summary$Deviazione_Standard, ")"),
+    paste0(age_summary$Min, "–", age_summary$Max)
+  )
+) %>%
+  gt() %>%
+  cols_align(
+    align = "left",
+    columns = 1
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = -1
+  )
+```
 
-**Importazione dei vettori percettivi**
+**Genere**
 
-Importazione dei vettori percettivi (dati da Psytoolkit) e preparazione del dataset dei partecipanti nella forma (participant, brano, gusto, rating)
+```{r echo=FALSE}
+make_freq_table(demo_df, gender, "Genere")
+```
+
+**Etnia**
+
+```{r echo=FALSE}
+make_freq_table(demo_df, ethnicity, "Etnia")
+```
+
+**Esperienza enogastronomica**
+
+```{r echo=FALSE}
+make_freq_table(demo_df, eating_experience, "Esperienza enogastronomica")
+```
+
+**Esperienza musicale**
+
+```{r echo=FALSE}
+make_freq_table(demo_df, hearing_experience, "Esperienza musicale")
+```
+
+**Disturbi uditivi**
+
+```{r echo=FALSE}
+make_freq_table(demo_df, hearing_impairments, "Disturbi uditivi")
+```
+
+**Disturbi gustaivi e/o olfattivi**
+
+```{r echo=FALSE}
+make_freq_table(demo_df, taste_impairments, "Disturbi gustativi/olfattivi")
+```
+
+**Dispositivo di ascolto utilizzato**
+
+```{r echo=FALSE}
+make_freq_table(demo_df, device, "Dispositivo di ascolto utilizzato")
+```
+
+Nel complesso, il campione è composto da 49 partecipanti e presenta una
+distribuzione non uniforme per alcune caratteristiche demografiche, in
+particolare per l’etnia, con una prevalenza di individui bianchi
+europei/americani. Inoltre, la maggior parte dei partecipanti non riporta
+disturbi uditivi né difficoltà nella percezione di gusti e/o odori.
+
+
+## Struttura dei dati e preprocessing
+
+### Struttura del dataset
+
+In questa fase i dati grezzi relativi ai vettori percettivi vengono
+riorganizzati in formato *long*, in modo da ottenere una riga per ogni
+valutazione: (partecipante × brano × dimensione gustativa). Le cinque
+dimensioni (salato, dolce, acido, amaro, piccante) vengono ricavate
+dall’indice presente nei nomi delle colonne.
 
 ```{r}
 d_long <- raw_df %>%
@@ -199,10 +329,34 @@ d_long <- raw_df %>%
   select(participant, brano, gusto, rating) %>%
   filter(!is.na(rating))
 
-
 ```
 
-Numero di partecipanti N e verifica numero valutazioni per partecipante: nella tabella ogni partecipante deve avere 50 righe (10 brani x 5 dimensioni gustative).
+### Individuazione di outlier
+
+In questa fase vengono rimossi tutti i partecipanti che hanno fornito
+valutazioni tutte uguali e che quindi presentano varianza 0. In questo
+modo vengono rimosse dall'analisi le valutazioni che non contengono
+informazioni utili per lo studio.
+
+```{r}
+# Calcolo varianza delle risposte per partecipante
+participant_variance <- d_long %>%
+  group_by(participant) %>%
+  summarise(var_rating = var(rating, na.rm = TRUE))
+
+# Partecipanti con varianza nulla
+participants_to_remove <- participant_variance %>%
+  filter(var_rating == 0) %>%
+  pull(participant)
+
+# Rimozione dal dataset
+d_long <- d_long %>%
+  filter(!participant %in% participants_to_remove)
+```
+
+Viene verificata la numerosità del campione e la completezza delle
+valutazioni per partecipante (numero di righe per soggetto nel dataset
+in formato long).
 
 ```{r}
 d_long %>% count(participant) %>% summary()
@@ -210,18 +364,25 @@ n_partecipanti <- n_distinct(d_long$participant)
 cat("Numero di partecipanti:", n_partecipanti, "\n")
 ```
 
-Importazione dei vettori target:
+Non sono stati identificati partecipanti con risposte a varianza nulla;
+pertanto, nessuna valutazione è stata esclusa per l'analisi.
+
+### Importazione dei vettori target
+
+I vettori *target* (metadati associati ai brani nello spazio gustativo)
+vengono importati da un file separato e utilizzati nelle analisi
+successive per il confronto con i vettori percettivi medi.
 
 ```{r}
 target <- read_excel("data/target_vectors.xlsx")
-
 ```
 
-**Normalizzazione (z-score)**
+### Normalizzazione (z-score)
 
-Normalizzare perché le scale di valutazione possano essere confrontate (le scale likert sono diverse dai valori target), per questo abbiamo bisogno di fare $z$-score per ciascuna dimensione del vettore percettivo: $$
-  \mathbf{p}_{ij}^{norm} = \frac{\mathbf{p}_{ij} - \mu_j}{\sigma_j}
-  $$ dove $\mu_j$ e $\sigma_j$ sono la media e la deviazione standard delle valutazioni per la dimensione $j$. Ci aspettiamo che la varianza spuria venga ridotta in questo modo.
+Per rendere confrontabili tra loro le diverse dimensioni gustative e
+allineare le scale tra valutazioni percettive e vettori target, le
+variabili vengono standardizzate tramite z-score (media 0, deviazione
+standard 1) separatamente per ciascuna dimensione gustativa.
 
 -   Normalizzazione dei vettori percettivi:
 
@@ -230,7 +391,9 @@ d_long <- d_long %>%
   group_by(gusto) %>%
   mutate(rating_z = as.numeric(scale(rating))) %>%
   ungroup()
+```
 
+```{r echo=FALSE}
 #grafico distribuzioni per gusto
 ggplot(d_long, aes(x = gusto, y = rating_z)) +
   geom_hline(yintercept = 0, linetype = "dashed") +
@@ -238,26 +401,17 @@ ggplot(d_long, aes(x = gusto, y = rating_z)) +
   geom_jitter(width = 0.15, alpha = 0.15, size = 0.8) +
   theme_minimal() +
   labs(
-    title = "Distribuzione dei rating normalizzati (z-score) per gusto",
-    subtitle = "Linea tratteggiata = media 0; boxplot + punti (valutazioni individuali)",
+    title = "Distribuzione dei rating normalizzati per gusto",
     x = "Gusto",
-    y = "Rating normalizzato (z-score)"
-  )
-
-#grafico versione alternativa
-ggplot(d_long, aes(x = rating_z)) +
-  geom_density() +
-  facet_wrap(~ gusto, scales = "free_y") +
-  geom_vline(xintercept = 0, linetype = "dashed") +
-  theme_minimal() +
-  labs(
-    title = "Distribuzione dei rating normalizzati (z-score) per gusto",
-    subtitle = "Linea tratteggiata = media 0",
-    x = "Rating normalizzato (z-score)",
-    y = "Densità"
+    y = "Rating normalizzato"
   )
 
 ```
+
+Dal grafico emerge che, dopo la normalizzazione, le distribuzioni dei rating per i diversi gusti risultano complessivamente confrontabili, con valori centrati attorno allo zero. Tuttavia, le mediane mostrano leggere differenze tra i gusti: *acido*, *amaro*, *dolce* e *piccante* tendono ad avere valori medi leggermente negativi, mentre il gusto *salato* presenta una mediana più prossima allo zero.
+
+La variabilità delle valutazioni non è uniforme tra i gusti: il *salato* mostra una dispersione maggiore rispetto agli altri, indicando una percezione più eterogenea tra i partecipanti. Per tutti i gusti sono presenti outlier positivi, suggerendo che alcuni brani evocano associazioni gustative particolarmente intense, sebbene non sistematiche.
+
 
 -   Normalizzazione dei vettori target:
 
@@ -273,6 +427,16 @@ target_z %>%
   )
 
 ```
+
+### PCA dei vettori target normalizzati
+
+Visualizzazione dei vettori percettivi medi nello spazio delle prime due
+componenti principali (PCA) per esplorare la struttura dei brani nello
+spazio gustativo.
+
+Osservando la proiezione sulle prime due componenti è possibile identificare raggruppamenti tra brani con profili gustativi percepiti simili.
+
+Nel grafico, ciascun punto rappresenta un brano e ciascuna freccia i vettori gustativi di base.
 
 ```{r}
 # PCA sui vettori target normalizzati
@@ -329,24 +493,27 @@ ggplot(tgt_pca_df, aes(x = PC1, y = PC2, shape = factor(id))) +
   )
 ```
 
-### Statistica descrittiva
-#### Per dimensione gustativa
+Un brano proiettato lungo una freccia ha alto valore per quel gusto e la vicinanza tra brani riflette la similarità dei profili target.
+La PCA dei vettori target evidenzia una struttura gustativa coerente:
 
-Calcolo della media e della deviazione standard delle valutazioni percettive per ogni dimensione gustativa.
+- *Dolce* punta in direzione opposta a *salato*/*piccante* → sono anticorrelati nello spazio target;
 
--   media
+- *Amaro* e *acido* hanno direzioni simili → tendono a co-variare;
 
-    $$
-    \mu_j = \frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} p_{ikj}
-    $$
+- *Salato* e *piccante* sono allineati → spesso crescono insieme.
 
--   deviazione standard
 
-    $$
-    \sigma_j = \sqrt{\frac{1}{M} \sum_{i=1}^{20} \sum_{k=1}^{N_i} (p_{ikj} - \mu_j)^2}
-    $$
+## Statistica descrittiva per dimensione gustativa
 
-dove $M = \sum_{i=1}^{20} N_i$ è il numero totale di valutazioni.
+In questa sezione viene riportata un’analisi descrittiva delle
+valutazioni percettive per ogni dimensione gustativa e per ogni brano.
+
+### Distribuzione delle valutazioni per dimensione gustativa
+
+In questa fase viene calcolata la media e deviazione standard delle
+valutazioni percettive per ogni dimensione gustativa, con l’obiettivo di
+descrivere l’uso della scala Likert (1–7) e verificare l’eventuale
+presenza di ceiling o floor effects.
 
 ```{r}
 descrittive_gusti <- d_long %>%
@@ -359,30 +526,32 @@ descrittive_gusti <- d_long %>%
 
 descrittive_gusti %>%
   gt() %>%
-  tab_header(
-    title = "Statistiche descrittive dei rating per gusto",
-    subtitle = "Media e deviazione standard"
-  ) %>%
   fmt_number(
     columns = c(Media, Deviazione_Standard),
     decimals = 2
   ) %>%
   cols_align(
+    align = "left",
+    columns = 1
+  ) %>%
+  cols_align(
     align = "center",
-    everything()
+    columns = -1
   )
 ```
 
-**Valutazione di ceiling e floor effects**
+Le statistiche descrittive sono affiancate da una rappresentazione
+grafica delle distribuzioni delle valutazioni per ciascuna dimensione
+gustativa.
 
-```{r}
+```{r echo=FALSE}
 ggplot(d_long, aes(x = gusto, y = rating)) +
   geom_boxplot() +
   theme_minimal() +
   labs(x = "Gusto", y = "Rating Likert (1-7)")
 ```
 
-```{r}
+```{r echo=FALSE}
 ggplot(d_long, aes(x = rating)) +
   geom_histogram(binwidth = 1, boundary = 0.5) +
   facet_wrap(~ gusto) +
@@ -390,23 +559,75 @@ ggplot(d_long, aes(x = rating)) +
   labs(x = "Rating Likert (1-7)", y = "Frequenza")
 ```
 
-L’ispezione delle distribuzioni delle valutazioni per ciascuna dimensione gustativa, mediante boxplot e istogrammi, è stata utilizzata per verificare l'eventuale presenza di ceiling e floor effects.
+L’ispezione dei boxplot e degli istogrammi mostra che, per tutte le
+dimensioni gustative, le valutazioni coprono l’intero range della scala
+Likert. Per le dimensioni *acido*, *amaro*, *dolce* e *piccante*, le
+distribuzioni risultano concentrate su valori bassi, pur mantenendo una
+presenza non trascurabile di valutazioni intermedie e alte. La
+dimensione *salato* presenta una distribuzione più centrata, con
+maggiore dispersione lungo la scala. Nel complesso, non emergono
+evidenze di ceiling o floor effects marcati, suggerendo un utilizzo
+adeguato della scala da parte dei partecipanti.
 
-Per le dimensioni acido, amaro, dolce e piccante, i boxplot mostrano mediane intorno al valore 2, con quartili approssimativamente compresi tra 1 e 4 e whiskers che si estendono fino ai valori più alti della scala (7). Questo indica una leggera concentrazione delle risposte verso valori bassi, ma anche la presenza di valutazioni intermedie e alte. Non si osserva quindi un accumulo marcato esclusivamente sul valore minimo della scala.
+## Statistica descrittiva per brano
 
-Per la dimensione salato, la mediana risulta intorno al valore 3 e la distribuzione appare maggiormente centrata, con ampia dispersione lungo l’intera scala Likert. Non emergono concentrazioni evidenti agli estremi.
+### Distribuzione delle valutazioni per brano
 
-Gli istogrammi confermano questi pattern: per tutte le dimensioni è presente un picco di frequenza sul valore 1, ma sono ben rappresentati anche i valori compresi tra 2 e 6, con code che raggiungono il valore massimo della scala.
+In questa sezione viene analizzata la numerosità delle valutazioni
+disponibili per ciascun brano, al fine di verificare eventuali squilibri
+nel numero di valutazioni raccolte tra i diversi brani.
 
-Nel complesso, le distribuzioni coprono l’intero range 1–7, indicando che la scala Likert è stata utilizzata in modo adeguato dai partecipanti.
+```{r}
+# calcolo del numero di valutazioni per brano
+n_per_brano <- d_long %>%
+  distinct(participant, brano) %>%
+  count(brano, name = "N_valutazioni")
+```
 
-#### Per brano
+La distribuzione delle valutazioni per brano è visualizzabile nella seguente tabella, in ordine decrescente di numero di valutazione per brano.
 
-- Per ogni brano i, calcolo il vettore percettivo medio su tutti i partecipanti j che hanno valutato il brano:
+```{r echo=FALSE}
+# visualizzazione della distribuzione delle valutazioni
+ggplot(n_per_brano, aes(x = brano, y = N_valutazioni)) +
+  geom_col() +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  ) +
+  labs(
+    x = "Brano",
+    y = "Numero di valutazioni",
+    title = "Numero di valutazioni per brano"
+  )
 
- $$
- \bar{\mathbf{p}}_i = \frac{1}{N_i} \sum_{j=1}^{N_i} \mathbf{p}_{ij}
- $$
+# tabella con numero di valutazioni per brano (ordine decrescente)
+n_per_brano %>%
+  arrange(desc(N_valutazioni)) %>%
+  gt() %>%
+  cols_label(
+    brano = "Brano",
+    N_valutazioni = "Numero di valutazioni"
+  ) %>%
+  cols_align(
+    align = "left",
+    columns = 1
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = -1
+  )
+```
+
+La variabilità osservata nel numero di valutazioni per brano suggerisce
+l’opportunità di considerare il diverso contributo di ciascun stimolo
+nelle analisi presentate nelle sezioni successive.
+
+### Vettori percettivi medi
+
+Per ciascun brano viene calcolato il vettore percettivo medio, ottenuto
+come media dei rating standardizzati sulle cinque dimensioni gustative,
+considerando tutti i partecipanti che hanno valutato il brano.
+
 ```{r}
 # Calcola il vettore percettivo medio per brano (da d_long)
 p_mean <- d_long %>%
@@ -416,21 +637,28 @@ p_mean <- d_long %>%
 p_mean_wide <- p_mean %>%
   pivot_wider(names_from = gusto, values_from = mean_rating)
 
+```
+
+```{r echo=FALSE, results='hide'}
 # Check: brani allineati
 setdiff(p_mean_wide$brano, target_z$brano)
 setdiff(target_z$brano, p_mean_wide$brano)
+```
 
+```{r}
 # Unisci percezione media e target
 merged <- p_mean_wide %>%
   inner_join(target_z, by = "brano", suffix = c("_perc", "_tgt"))
+```
 
+```{r echo=FALSE, results='hide'}
 # check: 20 righe
 dim(merged)
 ```
 
+I vettori percettivi medi sono visualizzabili nella seguente tabella.
 
-
-```{r}
+```{r echo=FALSE}
 p_mean_wide %>%
   arrange(brano) %>%
   gt() %>%
@@ -443,101 +671,21 @@ p_mean_wide %>%
     decimals = 3
   ) %>%
   cols_align(
+    align = "left",
+    columns = 1
+  ) %>%
+  cols_align(
     align = "center",
-    everything()
+    columns = -1
   )
 ```
 
-#### Matrice di correlazione tra vettori percettivi e vettori target
 
-Heatmap delle distanze euclidee tra vettori percettivi medi e vettori target per ciascun brano, al fine di identificare le corrispondenze più strette tra percezione e metadati.
+### PCA dei vettori percettivi medi
 
-```{r}
-# ============================
-# Matrice 20x20: distanze euclidee (perc_i vs target_j)
-# ============================
-
-# Matrici (20x5) nello stesso spazio normalizzato (z-score)
-mat_perc <- merged %>%
-  arrange(brano) %>%
-  select(acido_perc, amaro_perc, dolce_perc, piccante_perc, salato_perc) %>%
-  as.matrix()
-
-mat_tgt <- merged %>%
-  arrange(brano) %>%
-  select(acido_tgt, amaro_tgt, dolce_tgt, piccante_tgt, salato_tgt) %>%
-  as.matrix()
-
-brani <- merged %>% arrange(brano) %>% pull(brano)
-
-rownames(mat_perc) <- brani
-rownames(mat_tgt)  <- brani
-
-# Calcolo distanze: D[i,j] = || perc_i - target_j ||
-D <- as.matrix(dist(rbind(mat_perc, mat_tgt)))
-D_pt <- D[brani, brani]  # righe = perc (brani), colonne = target (brani)
-
-# Long format per heatmap
-df_heat <- as.data.frame(as.table(D_pt)) %>%
-  rename(
-    brano_percepito = Var1,
-    brano_target = Var2,
-    distanza = Freq
-  )
-
-# Best match (target più vicino) per ogni brano percepito
-best_match <- df_heat %>%
-  group_by(brano_percepito) %>%
-  slice_min(order_by = distanza, n = 1, with_ties = FALSE) %>%
-  ungroup() %>%
-  mutate(match_corretto = (brano_percepito == brano_target))
-
-# Heatmap: più scuro = più vicino (distanza minore)
-ggplot(df_heat, aes(x = brano_target, y = brano_percepito, fill = distanza)) +
-  geom_tile() +
-  theme_minimal() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid = element_blank()
-  ) +
-  labs(
-    title = "Heatmap delle distanze: vettori percettivi vs vettori target",
-    subtitle = "Ogni cella = distanza euclidea tra perc(brano i) e target(brano j); valori più bassi = maggiore somiglianza",
-    x = "Vettore target",
-    y = "Vettore percettivo medio"
-  )
-
-# Tabella: per ogni brano percepito, qual è il target più vicino
-best_match %>%
-  select(brano_percepito, brano_target, distanza, match_corretto) %>%
-  arrange(distanza) %>%
-  gt() %>%
-  tab_header(
-    title = "Target più vicino per ciascun brano percepito",
-    subtitle = "Minimo di riga della matrice delle distanze"
-  ) %>%
-  fmt_number(columns = distanza, decimals = 3) %>%
-  cols_label(
-    brano_percepito = "Brano (percettivo)",
-    brano_target = "Target più vicino",
-    distanza = "Distanza",
-    match_corretto = "Match corretto (diagonale)"
-  ) %>%
-  cols_align(everything(), align = "center") %>%
-  tab_source_note(
-    source_note = paste0(
-      "Accuratezza (match sulla diagonale): ",
-      sum(best_match$match_corretto), "/", nrow(best_match),
-      " = ", round(mean(best_match$match_corretto) * 100, 1), "%"
-    )
-  )
-
-```
-
-
-#### PCA dei vettori percettivi medi
-
-Visualizzazione dei vettori percettivi medi nello spazio delle prime due componenti principali (PCA) per esplorare la struttura dei brani nello spazio gustativo.
+Visualizzazione dei vettori percettivi medi nello spazio delle prime due
+componenti principali (PCA) per esplorare la struttura dei brani nello
+spazio gustativo.
 
 ```{r}
 # PCA sulle 5 dimensioni gustative
@@ -597,24 +745,19 @@ ggplot(pca_df, aes(x = PC1, y = PC2, shape = factor(id))) +
   )
 ```
 
+I gusti *dolce* e *amaro* risultano opposti lungo la seconda componente principale, ma condividono una componente comune sulla prima dimensione, mentre *salato* e *piccante* sono fortemente allineati, indicando che tendono a essere percepiti congiuntamente. Il gusto *acido* emerge invece come una dimensione percettiva distinta, separata dagli altri gusti. Nel complesso, questi risultati suggeriscono che i partecipanti non valutano i gusti in modo indipendente, ma secondo associazioni percettive stabili e strutturate.
 
-- Calcolo della distanza tra vettore target e vettore percettivo medio per ogni brano i:
-  $$
-  d_i = \| \mathbf{t}_i - \bar{\mathbf{p}}_i \|
-  $$
-- Distribuzione delle distanze osservate:
-  $$
-  D_{obs} = \{ d_1, d_2, \ldots, d_{20} \}
-  $$
+La geometria globale dello spazio percettivo risulta coerente con quella osservata per i vettori target, pur in assenza di una corrispondenza puntuale tra i singoli brani. Questa similarità strutturale, accompagnata da discrepanze a livello dei singoli brani, è in linea con i risultati ottenuti nella sezione successiva da Mantel test e Procrustes analysis, che indicano un allineamento significativo ma non perfetto tra i due spazi e spiegano il ridotto numero di match sulla diagonale della matrice di correlazione.
 
-- Calcolo della distanza media osservata:
-  $$
-  \bar{d}_{obs} = \frac{1}{20} \sum_{i=1}^{20} d_i
-  $$
+## Confronto tra spazio target e percettivo
+
+### Distanza tra vettore target e percettivo medio
+
+Per ciascun brano viene calcolata la distanza euclidea tra il vettore percettivo medio e il corrispondente vettore target, al fine di quantificare il grado di corrispondenza tra percezione e metadati associati allo stimolo.
+
 ```{r}
-library(gt)
 
-# calcola la distanza tra il vettore target e il vettore percettivo medio
+# Distanza euclidea tra vettore target e vettore percettivo medio
 dist_per_brano <- merged %>%
   rowwise() %>%
   mutate(
@@ -630,8 +773,11 @@ dist_per_brano <- merged %>%
   select(brano, d)
 
 media_distanza <- mean(dist_per_brano$d)
+```
 
-# tabella
+```{r echo=FALSE}
+
+# tabella delle distanze
 dist_per_brano %>%
   arrange(d) %>%
   gt() %>%
@@ -647,9 +793,13 @@ dist_per_brano %>%
     brano = "Brano",
     d = "Distanza"
   ) %>%
+ cols_align(
+    align = "left",
+    columns = 1
+  ) %>%
   cols_align(
     align = "center",
-    everything()
+    columns = -1
   ) %>%
   tab_source_note(
     source_note = paste0(
@@ -660,32 +810,35 @@ dist_per_brano %>%
 
 ```
 
+
+
 #### Distanza media ponderata per numero di valutazioni
 
-Poiché il numero di valutazioni per brano non è uniforme, si calcola una versione ponderata della distanza media osservata, al fine di tenere conto della diversa affidabilità delle stime dei vettori percettivi medi.
+Poiché il numero di valutazioni per brano non è uniforme, come visto precedentemente, si calcola una
+versione ponderata della distanza media osservata, al fine di verificare se è necessario tenere
+conto della diversa affidabilità delle stime dei vettori percettivi
+medi.
 
 Sia $N_i$ il numero di partecipanti che hanno valutato il brano $i$, con
 $$
 \sum_{i=1}^{20} N_i = M,
-$$
-dove $M$ è il numero totale di valutazioni a livello di brano.
+$$ dove $M$ è il numero totale di valutazioni a livello di brano.
 
-Si definisce il peso associato al brano $i$ come:
-$$
+Si definisce il peso associato al brano $i$ come: $$
 w_i = \frac{N_i}{M},
-$$
-tale che:
-$$
+$$ tale che: $$
 \sum_{i=1}^{20} w_i = 1.
 $$
 
-La distanza media ponderata tra i vettori target e i vettori percettivi medi è quindi definita come:
-$$
+La distanza media ponderata tra i vettori target e i vettori percettivi
+medi è quindi definita come: $$
 \bar{d}_{w} = \sum_{i=1}^{20} w_i \, d_i
 = \sum_{i=1}^{20} w_i \, \| \mathbf{t}_i - \bar{\mathbf{p}}_i \|.
 $$
-
-Questa quantità assegna un contributo maggiore ai brani stimati su un numero più elevato di valutazioni, consentendo di verificare la robustezza dei risultati rispetto allo sbilanciamento nel numero di ascolti per brano.
+Questa quantità assegna un contributo maggiore ai brani stimati su un
+numero più elevato di valutazioni, consentendo di verificare la
+robustezza dei risultati rispetto allo sbilanciamento nel numero di
+ascolti per brano.
 
 ```{r}
 # Numero di valutazioni per ciascun brano
@@ -696,7 +849,9 @@ n_per_brano <- d_long %>%
 dist_weighted <- dist_per_brano %>%
   left_join(n_per_brano, by = "brano") %>%
   mutate(peso = N_i / sum(N_i))
+```
 
+```{r echo=FALSE}
 # Distanza media ponderata
 d_obs_weighted <- sum(dist_weighted$d * dist_weighted$peso)
 
@@ -710,19 +865,32 @@ tibble(
     subtitle = "Media semplice vs media ponderata per numero di valutazioni"
   ) %>%
   fmt_number(columns = Distanza_media, decimals = 4) %>%
-  cols_align(everything(), align = "center")
+  cols_align(
+    align = "left",
+    columns = 1
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = -1
+  )
 
 ```
 
-#### Consistenza tra spazio target e percettivo
+Il confronto tra la distanza media calcolata tramite media semplice e quella ottenuta mediante media ponderata mostra differenze minime. Questo risultato indica che lo sbilanciamento nel numero di valutazioni non influisce in modo sostanziale sulla stima della distanza media globale; pertanto, nelle analisi successive viene mantenuta la media semplice delle distanze.
 
-Per verificare che la struttura geometrica dei brani sia preservata tra lo spazio target e quello percettivo, si utilizzano due test complementari:
+### Consistenza tra spazio target e percettivo
 
-- **Mantel test**: verifica la correlazione tra le matrici di distanza 20×20 calcolate nei due spazi (permutation test).
-- **Procrustes analysis (PROTEST)**: misura la sovrapponibilità delle due configurazioni dopo allineamento ottimale (rotazione, traslazione, scala).
+Per verificare che la struttura geometrica dei brani sia preservata tra
+lo spazio target e quello percettivo, si utilizzano due test
+complementari:
+
+-   **Mantel test**: verifica la correlazione tra le matrici di distanza
+    20×20 calcolate nei due spazi (permutation test).
+-   **Procrustes analysis (PROTEST)**: misura la sovrapponibilità delle
+    due configurazioni dopo allineamento ottimale (rotazione,
+    traslazione, scala).
 
 ```{r}
-library(vegan)
 
 # Preparazione matrici ordinate per brano
 brani_ord <- sort(unique(merged$brano))
@@ -752,7 +920,7 @@ set.seed(123)
 procrustes_res <- protest(mat_target, mat_perc, permutations = 9999)
 ```
 
-```{r}
+```{r echo=FALSE}
 tibble(
   Test = c("Mantel", "Procrustes (PROTEST)"),
   Statistica = c(
@@ -767,54 +935,164 @@ tibble(
     subtitle = "Mantel test e Procrustes analysis"
   ) %>%
   fmt_number(columns = `p-value`, decimals = 4) %>%
-  cols_align(align = "center", everything())
+  cols_align(
+    align = "left",
+    columns = 1
+  ) %>%
+  cols_align(
+    align = "center",
+    columns = -1
+  )
 ```
 
-### Test principale di non-causalità (CORE CLAIM)
+Il Mantel test mostra una correlazione positiva e significativa tra le matrici di distanza dei due spazi (r = 0.45, p = 0.0001), indicando che relazioni di similarità tra i brani nello spazio percettivo tendono a riflettersi anche nello spazio target. L’analisi di Procrustes conferma questo risultato, evidenziando un allineamento significativo ma non perfetto tra le due configurazioni. Nel complesso, i risultati suggeriscono la presenza di una struttura condivisa tra spazio target e percettivo, pur in presenza di differenze locali tra i singoli brani.
 
-#### Permutation test sulla distanza vettoriale
+###  Matrice di correlazione tra vettori percettivi e vettori target
 
-- permutation test su distanza target-perceived:
-    - Per ogni brano i, calcolare la distanza tra vettore target e vettore percettivo medio:
+La matrice di correlazione (heatmap) riporta le distanze euclidee tra i vettori percettivi medi e i vettori target per tutti i brani. Ogni cella rappresenta la distanza tra il vettore percettivo di un brano e il vettore target di un altro brano; valori più bassi indicano una maggiore somiglianza tra le due rappresentazioni. La diagonale principale della matrice corrisponde al confronto tra ciascun brano e il proprio target, mentre le celle fuori diagonale rappresentano confronti incrociati tra brani differenti.
 
-      $$
-      d_i = \| \mathbf{t}_i - \bar{\mathbf{p}}_i \|
-      $$
-
-    - Calcolare la distanza media osservata:
-
-      $$
-      \bar{d}_{obs} = \frac{1}{20} \sum_{i=1}^{20} d_i
-      $$
-
-    - Creare una distribuzione nulla delle distanze medie tramite permutazione:
-        - Per k = 1 a 10.000:
-            - Permutare casualmente le associazioni tra brani e valutazioni percettive.
-            - Per ogni brano i, calcolare la distanza tra vettore target e vettore percettivo medio permutato:
-
-              $$
-              d_i^{perm} = \| \mathbf{t}_i - \bar{\mathbf{p}}_i^{perm} \|
-              $$
-
-            - Calcolare la distanza media permutata:
-              $$
-              \bar{d}_{perm}^{(k)} = \frac{1}{20} \sum_{i=1}^{20} d_i^{perm}
-              $$
-
-        - Ottenere la distribuzione nulla delle distanze medie permutate:
-
-          $$
-          D_{null} = \{ \bar{d}_{perm}^{(1)}, \bar{d}_{perm}^{(2)}, \ldots, \bar{d}_{perm}^{(10000)} \}
-          $$
-
-    - Calcolare il p-value come la proporzione di distanze medie permutate che sono minori o uguali alla distanza media osservata:
-
-      $$
-      p = \frac{1}{10000} \sum_{k=1}^{10000} I(\bar{d}_{perm}^{(k)} \leq \bar{d}_{obs})
-      $$
-
-      dove I è la funzione indicatrice.
 ```{r}
+# Matrici nello stesso ordine
+brani <- merged %>% arrange(brano) %>% pull(brano)
+
+mat_perc <- merged %>%
+  arrange(brano) %>%
+  select(acido_perc, amaro_perc, dolce_perc, piccante_perc, salato_perc) %>%
+  as.matrix()
+
+mat_tgt <- merged %>%
+  arrange(brano) %>%
+  select(acido_tgt, amaro_tgt, dolce_tgt, piccante_tgt, salato_tgt) %>%
+  as.matrix()
+
+rownames(mat_perc) <- paste0(brani, "_perc")
+rownames(mat_tgt)  <- paste0(brani, "_tgt")
+
+both <- rbind(mat_perc, mat_tgt)
+
+D <- as.matrix(dist(both))
+
+rows_perc <- paste0(brani, "_perc")
+cols_tgt  <- paste0(brani, "_tgt")
+
+D_pt <- D[rows_perc, cols_tgt]  # perc vs target, corretto
+
+# heatmap con diagonale alto-sinistra → basso-destra
+df_heat <- as.data.frame(as.table(D_pt)) %>%
+  rename(brano_percepito = Var1, brano_target = Var2, distanza = Freq) %>%
+  mutate(
+    brano_percepito = sub("_perc$", "", brano_percepito),
+    brano_target    = sub("_tgt$", "", brano_target),
+    brano_target = factor(brano_target, levels = brani),
+    brano_percepito = factor(brano_percepito, levels = rev(brani))
+  )
+
+ggplot(df_heat, aes(x = brano_target, y = brano_percepito, fill = distanza)) +
+  geom_tile() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid = element_blank()) +
+  labs(
+    title = "Heatmap delle distanze: vettori percettivi vs vettori target",
+    x = "Vettore target",
+    y = "Vettore percettivo medio",
+    fill = "Distanza"
+  )
+```
+
+```{r echo=FALSE, results='hide'}
+# check: è normale che la diagonale non sia evidente?
+# per ogni brano percepito, qual è il target più vicino?
+best_match <- df_heat %>%
+  group_by(brano_percepito) %>%
+  slice_min(distanza, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  mutate(match_diagonale = (brano_percepito == brano_target))
+
+mean(best_match$match_diagonale)
+```
+
+La diagonale principale della heatmap non è marcata: questo indica che le distanze minime (o comunque molto piccole) non sono tutte tra il vettore percettivo e il vettore target corrispondente. Tuttavia, si possono osservare celle particolarmente scure nella diagonale in corrispondenza dei brani: budino, cioccolato al latte, diavola, radicchio, te verde e tiramisù. Inoltre non sono presenti nella diagonale celle di colore molto chiaro, indicando che, nonostante l'accuratezza non perfetta tra i vettore percettivi e i vettori target, non sono presenti distanze elevate tra vettori corrispondenti.
+
+Per esploare maggiormente questo aspetto, la tabella seguente riporta, per ciascun brano, il vettore target più vicino in termini di distanza euclidea al vettore percettivo medio corrispondente. Per ogni riga è indicata la distanza minima osservata e se tale minimo coincide con il confronto lungo la diagonale della matrice (ovvero tra un brano e il proprio target).
+
+```{r echo=FALSE}
+# ===============================
+# Tabella: brani ordinati per miglior match (min distanza perc -> target)
+# + distanza "corrispondente" (diagonale) se il best match NON coincide
+# ===============================
+
+# 1) best match per ciascun brano percettivo (min distanza nella riga)
+best_match_tbl <- df_heat %>%
+  group_by(brano_percepito) %>%
+  slice_min(order_by = distanza, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  transmute(
+    brano = as.character(brano_percepito),
+    target_piu_vicino = as.character(brano_target),
+    distanza_minima = distanza,
+    match_diagonale = (as.character(brano_percepito) == as.character(brano_target))
+  )
+
+# 2) distanza sulla diagonale: perc(brano i) vs target(brano i)
+diag_tbl <- df_heat %>%
+  transmute(
+    brano = as.character(brano_percepito),
+    target = as.character(brano_target),
+    distanza_diag = distanza
+  ) %>%
+  filter(brano == target) %>%
+  select(brano, distanza_diag)
+
+# 3) unisci e mostra distanza_diag solo quando NON coincide col best match
+tabella_match_con_diag <- best_match_tbl %>%
+  left_join(diag_tbl, by = "brano") %>%
+  mutate(
+    distanza_corrispondente = ifelse(match_diagonale, NA_real_, distanza_diag)
+  ) %>%
+  select(brano, target_piu_vicino, distanza_minima, distanza_corrispondente, match_diagonale) %>%
+  arrange(distanza_minima)
+
+# 4) stampa tabella
+tabella_match_con_diag %>%
+  gt() %>%
+  tab_header(
+    title = "Brani ordinati per distanza minima",
+    subtitle = "Se il target più vicino non coincide col target corrispondente, viene riportata anche la distanza col target corrispondente "
+  ) %>%
+  fmt_number(columns = c(distanza_minima, distanza_corrispondente), decimals = 3) %>%
+  cols_label(
+    brano = "Vettore percettivo",
+    target_piu_vicino = "Target più vicino",
+    distanza_minima = "Distanza minima",
+    distanza_corrispondente = "Distanza col target corrispondente",
+    match_diagonale = "Match sulla diagonale"
+  ) %>%
+  cols_align("left", columns = c(brano, target_piu_vicino)) %>%
+  cols_align("center", columns = c(distanza_minima, distanza_corrispondente, match_diagonale)) %>%
+  tab_source_note(
+    source_note = paste0(
+      "Match sulla diagonale: ",
+      sum(tabella_match_con_diag$match_diagonale), "/", nrow(tabella_match_con_diag),
+      " (", round(mean(tabella_match_con_diag$match_diagonale) * 100, 1), "%)."
+    )
+  )
+```
+
+I risultati mostrano che, per la maggior parte dei brani, il target più vicino non coincide con il target associato allo stesso brano. Tuttavia, i casi di mismatch non appaiono casuali: i brani con una differenza minore tre distanze *percettivo-target corrispondente* e *percettivo-target più vicino* risultano frequentemente più vicini a target caratterizzati da profili gustativi simili, suggerendo che la struttura dello spazio percettivo rifletta prevalentemente le prevalenze gustative globali piuttosto che l’identità specifica del singolo brano. Questo pattern è coerente con i risultati dei test globali di consistenza, che indicano una corrispondenza strutturale significativa ma non perfetta tra spazio percettivo e spazio target.
+
+
+## Test principale di non-causalità (CORE CLAIM)
+
+### Permutation test sulla distanza vettoriale
+
+Per verificare se la distanza media osservata tra vettori percettivi medi e vettori target sia inferiore a quanto atteso per associazioni casuali, viene applicato un permutation test. Il test consiste nel riassegnare casualmente i vettori target ai vettori percettivi medi, mantenendo invariati i vettori stessi ma rompendo la corrispondenza brano–target. Per ciascuna permutazione viene calcolata la distanza media, ottenendo una distribuzione nulla della statistica. Il confronto tra la distanza media osservata e la distribuzione ottenuta per permutazione consente di valutare la significatività dell’allineamento percettivo–target.
+
+```{r}
+#====================
+# PERMUTATION TEST
+#====================
+
 set.seed(123)      # riproducibilità
 n_perm <- 10000
 
@@ -822,48 +1100,51 @@ d_perm_means <- numeric(n_perm)
 d_obs <- mean(dist_per_brano$d)   # distanza media osservata
 
 for (k in 1:n_perm) {
-  merged_perm <- merged
+          merged_perm <- merged
 
-  idx <- sample(1:nrow(merged_perm))
+          idx <- sample(1:nrow(merged_perm))
 
-  merged_perm[, c("acido_perc", "amaro_perc", "dolce_perc", "piccante_perc", "salato_perc")] <-
-    merged_perm[idx, c("acido_perc", "amaro_perc", "dolce_perc", "piccante_perc", "salato_perc")]
+          merged_perm[, c("acido_perc", "amaro_perc", "dolce_perc",
+                          "piccante_perc", "salato_perc")] <-
+            merged_perm[idx, c("acido_perc", "amaro_perc", "dolce_perc",
+                               "piccante_perc", "salato_perc")]
 
-  d_k <- merged_perm %>%
-    rowwise() %>%
-    mutate(
-      d = sqrt(
-        (acido_tgt - acido_perc)^2 +
-          (amaro_tgt - amaro_perc)^2 +
-          (dolce_tgt - dolce_perc)^2 +
-          (piccante_tgt - piccante_perc)^2 +
-          (salato_tgt - salato_perc)^2
-      )
-    ) %>%
-    ungroup()
+          d_k <- merged_perm %>%
+            rowwise() %>%
+            mutate(
+              d = sqrt(
+                (acido_tgt - acido_perc)^2 +
+                  (amaro_tgt - amaro_perc)^2 +
+                  (dolce_tgt - dolce_perc)^2 +
+                  (piccante_tgt - piccante_perc)^2 +
+                  (salato_tgt - salato_perc)^2
+              )
+            ) %>%
+            ungroup()
 
-  #d_perm_means[k] <- mean(d_k$d)
-  d_perm_means[k] <- sum(d_k$d * dist_weighted$peso)
+          d_perm_means[k] <- mean(d_k$d)
+          
 
-}
+        }
 
 Dnull <- d_perm_means
-#p_value <- mean(Dnull <= d_obs)
-p_value <- mean(Dnull <= d_obs_weighted)
-
+p_value <- mean(Dnull <= d_obs)
+        
 ```
 
-```{r}
+```{r echo=FALSE}
+
+# se p è molto piccolo scrive <<0.001
 p_value_table <- ifelse(
   p_value < 0.001,
   "<<0.001",
   formatC(p_value, format = "f", digits = 4)
 )
 
+# tabella per mostrare il p-value
 risultati_perm <- tibble::tibble(
   `Permutazioni` = n_perm,
   `Distanza media osservata` = d_obs,
-  `Distanza media ponderata` = d_obs_weighted,
   `Media nulla` = mean(Dnull),
   `SD nulla` = sd(Dnull),
   `p-value` = p_value_table
@@ -883,21 +1164,25 @@ risultati_perm %>%
 
 ```
 
-```{r}
-library(ggplot2)
+Essendo p \< 0.05 possiamo concludere che esista una relazione sistematica tra le metadate dei brani e la percezione gustativa dei partecipanti.
+
+Il seguente grafico mostra la distribuzione delle distanze medie ottenute mediante la permutazione.
+
+```{r echo=FALSE}
 
 df_null <- data.frame(d = Dnull)
 
+# se p è molto piccolo scrive <<0.001
 p_value_label <- ifelse(
   p_value < 0.001,
   "p-value << 0.001",
   paste0("p-value = ", signif(p_value, 3))
 )
 
-
+# grafico per visualizzare la distanza media permutata
 ggplot(df_null, aes(x = d)) +
   geom_histogram(binwidth = 0.02) +
-  geom_vline(xintercept = d_obs_weighted, linetype = "dashed", linewidth = 1) +
+  geom_vline(xintercept = d_obs, linetype = "dashed", linewidth = 1) +
   geom_histogram(
     data = subset(df_null, d <= d_obs),
     aes(x = d),
@@ -907,8 +1192,8 @@ ggplot(df_null, aes(x = d)) +
   labs(
   title = "Permutation test: distribuzione nulla della distanza media",
   subtitle = paste0(
-    "Linea tratteggiata = distanza media ponderata osservata (",
-    round(d_obs_weighted, 3),
+    "Linea tratteggiata = distanza media osservata (",
+    round(d_obs, 3),
     "), ",
     p_value_label
   ),
@@ -918,26 +1203,27 @@ ggplot(df_null, aes(x = d)) +
 
 ```
 
-
-Essendo p < 0.05 possiamo rifiutare l’ipotesi $H_0$ e concludere che esista
-una relazione sistematica tra le metadate del brano e la percezione gustativa.
-
+La distanza media osservata collocata nella coda sinistra della distribuzione indica che l’allineamento percettivo–target è maggiore di quanto atteso per associazioni casuali, in accordo con il p-value stimato.
 
 #### Quantificazione dell’effetto misurato (effect size)
 
-L’effect size è definito come uno z-score rispetto alla distribuzione nulla delle distanze medie permutate:
+L’effect size è definito come uno z-score rispetto alla distribuzione
+nulla delle distanze medie permutate:
 
 $$
 z_{\text{eff}} = \frac{\mu_{\text{null}} - \bar{d}_{\text{obs}}}{\sigma_{\text{null}}},
 $$
 
-dove $\mu_{\text{null}}$ e $\sigma_{\text{null}}$ sono rispettivamente la media e la deviazione standard della distribuzione nulla, e $\bar{d}_{\text{obs}}$ è la distanza media osservata (ponderata).
+dove $\mu_{\text{null}}$ e $\sigma_{\text{null}}$ sono rispettivamente
+la media e la deviazione standard della distribuzione nulla, e
+$\bar{d}_{\text{obs}}$ è la distanza media osservata (ponderata).
 
 ```{r}
-# (Mean of Null - Observed) / SD of Null 
-#effect_size_z <- (mean(Dnull) - d_obs) / sd(Dnull)
-effect_size_z <- (mean(Dnull) - d_obs_weighted) / sd(Dnull)
+# (Mean of Null - Observed) / SD of Null
+effect_size_z <- (mean(Dnull) - d_obs) / sd(Dnull)
+```
 
+```{r echo=FALSE}
 #tabella
 tibble(
   `Effect size (z)` = effect_size_z
@@ -952,5 +1238,16 @@ tibble(
 
 ```
 
-L’effect-size risulta elevato, indicando che la distanza media osservata è di circa $`r round(effect_size_z, 2)`$ deviazioni standard inferiore a quella attesa sotto l’ipotesi nulla. Questo risultato suggerisce che la relazione osservata tra vettori target e vettori percettivi non è solo statisticamente significativa, ma anche di rilevanza sostanziale.
+L’effect-size risulta elevato, indicando che la distanza media osservata
+è di circa $`r round(effect_size_z, 2)`$ deviazioni standard inferiore a
+quella attesa sotto l’ipotesi nulla. Questo risultato suggerisce che la
+relazione osservata tra vettori target e vettori percettivi non è solo
+statisticamente significativa, ma anche di rilevanza sostanziale.
 
+## Conclusioni
+
+L’analisi dimostra che le associazioni tra i profili gustativi target associati ai brani musicali e lo spazio gustativo percettivo derivato dalle valutazioni dei partecipanti avvengono in modo sistematico. La distanza media osservata tra vettori percettivi e target risulta significativamente inferiore a quella attesa sotto associazioni casuali, come confermato dal test di permutazione e con un'ampia quantificazione dell'effetto.
+
+La coerenza strutturale tra i due spazi è supportata dalle analisi di Mantel e di Procrustes, che indicano una discreta relazione di similarità tra i brani. Tuttavia, la corrispondenza a livello del singolo brano è limitata: solo una piccola frazione dei brani risulta maggiormente associata al proprio profilo target, e i mismatch avvengono prevalentemente tra target gustativamente simili.
+
+Nel complesso, i risultati suggeriscono che i metadati gustativi catturano associazioni sistematiche significative nella percezione, pur non consentendo un’identificazione univoca e affidabile del singolo brano.
