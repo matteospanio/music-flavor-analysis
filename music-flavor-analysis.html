@@ -159,13 +159,20 @@ window.Quarto = {
 <h1>Analisi statistica per lo studio “Musica e gusto”</h1>
 <section id="introduzione" class="level2">
 <h2 class="anchored" data-anchor-id="introduzione">Introduzione</h2>
-<p>Questo documento riporta l’analisi statistica completa dello studio “Musica e Gusto”, che indaga la relazione tra le caratteristiche gustative associate ai brani musicali da un sistema di raccomandazione musicale per il sonic seasoning e la percezione gustativa dei partecipanti all’esperimento.</p>
-<p>L’obiettivo è documentare in modo trasparente e riproducibile i passaggi dell’analisi, dal preprocessing dei dati ai test statistici principali.</p>
-<p>Il file è strutturato come un report eseguibile: il codice è organizzato in sezioni successive e accompagnato da brevi commenti interpretativi.</p>
+<p>Questo documento riporta l’analisi completa dei dati utilizzati nello studio “Musica e Gusto”, il cui obiettivo è verificare l’esistenza di una relazione sistematica tra le caratteristiche gustative associate a dei brani da un sistema di raccomandazione musicale per il sonic seasonig e la percezione gustativa riportata dai partecipanti.</p>
+<p>L’analisi è stata condotta seguendo il piano descritto nel file README.md del repository, che definisce gli obiettivi, i dati utilizzati e la sequenza delle analisi. In questo documento si riportano i risultati dell’esecuzione di tale piano.</p>
+<p>In sintesi, l’analisi prevede:</p>
+<ul>
+<li><p>normalizzazione delle valutazioni percettive</p></li>
+<li><p>aggregazione delle valutazioni percettive per brano</p></li>
+<li><p>calcolo delle distanze target–percettivo</p></li>
+<li><p>test di non causalità tramite permutazioni</p></li>
+<li><p>analisi esplorative di coerenza strutturale</p></li>
+</ul>
 </section>
 <section id="setup-dellambiente" class="level2">
 <h2 class="anchored" data-anchor-id="setup-dellambiente">Setup dell’ambiente</h2>
-<p>In questa sezione vengono caricate le librerie utilizzate per l’analisi dei dati e impostate le opzioni necessarie per garantire la riproducibilità del report.</p>
+<p>In questa sezione vengono caricate le librerie utilizzate per l’analisi dei dati e impostate le opzioni globali necessarie a garantire la riproducibilità del report. Tutte le analisi sono state condotte utilizzando il linguaggio R.</p>
 <section id="librerie-e-opzioni-globali" class="level3">
 <h3 class="anchored" data-anchor-id="librerie-e-opzioni-globali">Librerie e opzioni globali</h3>
 <div class="cell">
@@ -194,7 +201,7 @@ window.Quarto = {
 </section>
 <section id="descrizione-del-campione" class="level2">
 <h2 class="anchored" data-anchor-id="descrizione-del-campione">Descrizione del campione</h2>
-<p>In questa sezione viene riportata una descrizione del campione dei partecipanti allo studio, sulla base delle informazioni demografiche e delle caratteristiche individuali raccolte tramite questionario. Le statistiche sono presentate in forma tabellare al fine di fornire una panoramica completa del campione analizzato.</p>
+<p>In questa sezione viene riportata una descrizione del campione di partecipanti incluso nell’analisi, sulla base delle informazioni demografiche e delle caratteristiche individuali raccolte tramite questionario. Le statistiche descrittive sono presentate in forma tabellare al fine di fornire una panoramica delle principali caratteristiche del campione analizzato.</p>
 <p><strong>Età</strong></p>
 <div class="cell">
 <div class="cell-output-display">
@@ -4007,7 +4014,7 @@ window.Quarto = {
 </div>
 </div>
 </div>
-<p>Nel complesso, il campione è composto da 49 partecipanti e presenta una distribuzione non uniforme per alcune caratteristiche demografiche, in particolare per l’etnia, con una prevalenza di individui bianchi europei/americani. Inoltre, la maggior parte dei partecipanti non riporta disturbi uditivi né difficoltà nella percezione di gusti e/o odori.</p>
+<p>Nel complesso, il campione analizzato è composto da 49 partecipanti. La distribuzione delle caratteristiche demografiche evidenzia una prevalenza di individui bianchi europei/americani, mentre la maggior parte dei partecipanti non riporta la presenza di disturbi uditivi né di difficoltà nella percezione di gusti e/o odori. Le informazioni relative all’esperienza musicale ed enogastronomica e ai dispositivi di ascolto utilizzati forniscono un ulteriore contesto per l’interpretazione delle analisi successive.</p>
 </section>
 <section id="struttura-dei-dati-e-preprocessing" class="level2">
 <h2 class="anchored" data-anchor-id="struttura-dei-dati-e-preprocessing">Struttura dei dati e preprocessing</h2>
@@ -4040,7 +4047,7 @@ window.Quarto = {
 </section>
 <section id="individuazione-di-outlier" class="level3">
 <h3 class="anchored" data-anchor-id="individuazione-di-outlier">Individuazione di outlier</h3>
-<p>In questa fase vengono rimossi tutti i partecipanti che hanno fornito valutazioni tutte uguali e che quindi presentano varianza 0. In questo modo vengono rimosse dall’analisi le valutazioni che non contengono informazioni utili per lo studio.</p>
+<p>In questa fase vengono rimossi tutti i partecipanti che hanno fornito valutazioni tutte uguali e che quindi presentano varianza 0. In questo modo vengono escluse dall’analisi le valutazioni caratterizzate da assenza di variabilità, che non consentono una stima informativa della percezione gustativa.</p>
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Calcolo varianza delle risposte per partecipante</span></span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>participant_variance <span class="ot">&lt;-</span> d_long <span class="sc">%&gt;%</span></span>
@@ -4056,7 +4063,7 @@ window.Quarto = {
 <span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>d_long <span class="ot">&lt;-</span> d_long <span class="sc">%&gt;%</span></span>
 <span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span>participant <span class="sc">%in%</span> participants_to_remove)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
-<p>Viene verificata la numerosità del campione e la completezza delle valutazioni per partecipante (numero di righe per soggetto nel dataset in formato long).</p>
+<p>Viene verificata la numerosità del campione e la completezza delle valutazioni per partecipante (numero di righe per soggetto nel dataset in formato <em>long</em>).</p>
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>d_long <span class="sc">%&gt;%</span> <span class="fu">count</span>(participant) <span class="sc">%&gt;%</span> <span class="fu">summary</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
@@ -4074,7 +4081,7 @@ window.Quarto = {
 <pre><code>Numero di partecipanti: 49 </code></pre>
 </div>
 </div>
-<p>Non sono stati identificati partecipanti con risposte a varianza nulla; pertanto, nessuna valutazione è stata esclusa per l’analisi.</p>
+<p>Non sono stati identificati partecipanti con risposte a varianza nulla; pertanto, tutte le osservazioni sono state mantenute per le analisi successive.</p>
 </section>
 <section id="importazione-dei-vettori-target" class="level3">
 <h3 class="anchored" data-anchor-id="importazione-dei-vettori-target">Importazione dei vettori target</h3>
@@ -4104,8 +4111,7 @@ window.Quarto = {
 </div>
 </div>
 </div>
-<p>Dal grafico emerge che, dopo la normalizzazione, le distribuzioni dei rating per i diversi gusti risultano complessivamente confrontabili, con valori centrati attorno allo zero. Tuttavia, le mediane mostrano leggere differenze tra i gusti: <em>acido</em>, <em>amaro</em>, <em>dolce</em> e <em>piccante</em> tendono ad avere valori medi leggermente negativi, mentre il gusto <em>salato</em> presenta una mediana più prossima allo zero.</p>
-<p>La variabilità delle valutazioni non è uniforme tra i gusti: il <em>salato</em> mostra una dispersione maggiore rispetto agli altri, indicando una percezione più eterogenea tra i partecipanti. Per tutti i gusti sono presenti outlier positivi, suggerendo che alcuni brani evocano associazioni gustative particolarmente intense, sebbene non sistematiche.</p>
+<p>Il grafico mostra le distribuzioni dei rating normalizzati per ciascuna dimensione gustativa. Dopo la normalizzazione, le distribuzioni risultano centrate attorno allo zero, consentendo il confronto tra dimensioni. La dispersione delle valutazioni non è uniforme tra i gusti, con alcune dimensioni che mostrano una variabilità maggiore. La presenza di valori estremi riflette la variabilità delle associazioni percettive riportate dai partecipanti e non ha richiesto ulteriori procedure di filtraggio.</p>
 <ul>
 <li>Normalizzazione dei vettori target:</li>
 </ul>
@@ -4364,17 +4370,12 @@ window.Quarto = {
 </div>
 </div>
 </div>
-<p>Un brano proiettato lungo una freccia ha alto valore per quel gusto e la vicinanza tra brani riflette la similarità dei profili target. La PCA dei vettori target evidenzia una struttura gustativa coerente:</p>
-<ul>
-<li><p><em>Dolce</em> punta in direzione opposta a <em>salato</em>/<em>piccante</em> → sono anticorrelati nello spazio target;</p></li>
-<li><p><em>Amaro</em> e <em>acido</em> hanno direzioni simili → tendono a co-variare;</p></li>
-<li><p><em>Salato</em> e <em>piccante</em> sono allineati → spesso crescono insieme.</p></li>
-</ul>
+<p>La PCA dei vettori target normalizzati evidenzia una struttura coerente nello spazio gustativo. La proiezione sulle prime due componenti principali mostra relazioni sistematiche tra le dimensioni di base: la dimensione <em>dolce</em> risulta orientata in direzione opposta rispetto a <em>salato</em> e <em>piccante</em>, indicando una relazione di anticorrelazione nello spazio target, mentre <em>amaro</em> e <em>acido</em> presentano direzioni simili, suggerendo una tendenza alla co-variazione. Le dimensioni <em>salato</em> e <em>piccante</em> risultano inoltre allineate, indicando una possibile associazione nel modello target.</p>
 </section>
 </section>
 <section id="statistica-descrittiva-per-dimensione-gustativa" class="level2">
 <h2 class="anchored" data-anchor-id="statistica-descrittiva-per-dimensione-gustativa">Statistica descrittiva per dimensione gustativa</h2>
-<p>In questa sezione viene riportata un’analisi descrittiva delle valutazioni percettive per ogni dimensione gustativa e per ogni brano.</p>
+<p>In questa sezione viene presentata un’analisi descrittiva delle valutazioni percettive per ciascuna dimensione gustativa, con l’obiettivo di caratterizzare la distribuzione delle risposte e verificare l’adeguato utilizzo della scala di valutazione.</p>
 <section id="distribuzione-delle-valutazioni-per-dimensione-gustativa" class="level3">
 <h3 class="anchored" data-anchor-id="distribuzione-delle-valutazioni-per-dimensione-gustativa">Distribuzione delle valutazioni per dimensione gustativa</h3>
 <p>In questa fase viene calcolata la media e deviazione standard delle valutazioni percettive per ogni dimensione gustativa, con l’obiettivo di descrivere l’uso della scala Likert (1–7) e verificare l’eventuale presenza di ceiling o floor effects.</p>
@@ -4911,14 +4912,14 @@ window.Quarto = {
 </div>
 </div>
 </div>
-<p>L’ispezione dei boxplot e degli istogrammi mostra che, per tutte le dimensioni gustative, le valutazioni coprono l’intero range della scala Likert. Per le dimensioni <em>acido</em>, <em>amaro</em>, <em>dolce</em> e <em>piccante</em>, le distribuzioni risultano concentrate su valori bassi, pur mantenendo una presenza non trascurabile di valutazioni intermedie e alte. La dimensione <em>salato</em> presenta una distribuzione più centrata, con maggiore dispersione lungo la scala. Nel complesso, non emergono evidenze di ceiling o floor effects marcati, suggerendo un utilizzo adeguato della scala da parte dei partecipanti.</p>
+<p>L’ispezione dei boxplot e degli istogrammi mostra che, per tutte le dimensioni gustative, le valutazioni coprono l’intero range della scala Likert. Per le dimensioni <em>acido</em>, <em>amaro</em>, <em>dolce</em> e <em>piccante</em>, le distribuzioni risultano prevalentemente concentrate su valori bassi, pur mantenendo una presenza non trascurabile di valutazioni intermedie e alte. La dimensione <em>salato</em> presenta una distribuzione più centrata e una maggiore dispersione lungo la scala. Nel complesso, non emergono evidenze di ceiling o floor effects marcati, suggerendo un utilizzo adeguato della scala di valutazione da parte dei partecipanti.</p>
 </section>
 </section>
 <section id="statistica-descrittiva-per-brano" class="level2">
 <h2 class="anchored" data-anchor-id="statistica-descrittiva-per-brano">Statistica descrittiva per brano</h2>
 <section id="distribuzione-delle-valutazioni-per-brano" class="level3">
 <h3 class="anchored" data-anchor-id="distribuzione-delle-valutazioni-per-brano">Distribuzione delle valutazioni per brano</h3>
-<p>In questa sezione viene analizzata la numerosità delle valutazioni disponibili per ciascun brano, al fine di verificare eventuali squilibri nel numero di valutazioni raccolte tra i diversi brani.</p>
+<p>In questa sezione viene analizzata la numerosità delle valutazioni disponibili per ciascun brano, al fine di verificare la presenza di eventuali squilibri nel numero di osservazioni tra i diversi stimoli.</p>
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># calcolo del numero di valutazioni per brano</span></span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>n_per_brano <span class="ot">&lt;-</span> d_long <span class="sc">%&gt;%</span></span>
@@ -5479,7 +5480,7 @@ window.Quarto = {
 </div>
 </div>
 </div>
-<p>La variabilità osservata nel numero di valutazioni per brano suggerisce l’opportunità di considerare il diverso contributo di ciascun stimolo nelle analisi presentate nelle sezioni successive.</p>
+<p>La variabilità osservata nel numero di valutazioni per brano fornisce un’indicazione della distribuzione delle osservazioni tra gli stimoli e viene tenuta in considerazione nelle analisi successive, che si basano su misure aggregate a livello di brano.</p>
 </section>
 <section id="vettori-percettivi-medi" class="level3">
 <h3 class="anchored" data-anchor-id="vettori-percettivi-medi">Vettori percettivi medi</h3>
@@ -6203,8 +6204,8 @@ window.Quarto = {
 </div>
 </div>
 </div>
-<p>I gusti <em>dolce</em> e <em>amaro</em> risultano opposti lungo la seconda componente principale, ma condividono una componente comune sulla prima dimensione, mentre <em>salato</em> e <em>piccante</em> sono fortemente allineati, indicando che tendono a essere percepiti congiuntamente. Il gusto <em>acido</em> emerge invece come una dimensione percettiva distinta, separata dagli altri gusti. Nel complesso, questi risultati suggeriscono che i partecipanti non valutano i gusti in modo indipendente, ma secondo associazioni percettive stabili e strutturate.</p>
-<p>La geometria globale dello spazio percettivo risulta coerente con quella osservata per i vettori target, pur in assenza di una corrispondenza puntuale tra i singoli brani. Questa similarità strutturale, accompagnata da discrepanze a livello dei singoli brani, è in linea con i risultati ottenuti nella sezione successiva da Mantel test e Procrustes analysis, che indicano un allineamento significativo ma non perfetto tra i due spazi e spiegano il ridotto numero di match sulla diagonale della matrice di correlazione.</p>
+<p>La proiezione dei vettori percettivi medi sulle prime due componenti principali evidenzia relazioni sistematiche tra le dimensioni gustative. In particolare, i gusti <em>dolce</em> e <em>amaro</em> risultano opposti lungo la seconda componente principale, pur condividendo una componente comune lungo la prima dimensione, mentre <em>salato</em> e <em>piccante</em> mostrano un forte allineamento nello spazio percettivo. Il gusto <em>acido</em> emerge come una dimensione distinta, separata dalle altre.</p>
+<p>Nel complesso, la PCA suggerisce la presenza di dipendenze tra le dimensioni gustative nella percezione dei partecipanti, indicando che le valutazioni non sono distribuite in modo indipendente nello spazio gustativo. La geometria globale dello spazio percettivo appare qualitativamente coerente con quella osservata per i vettori target, pur senza una corrispondenza puntuale tra i singoli brani. Questa osservazione è coerente con le analisi di coerenza strutturale presentate nelle sezioni successive.</p>
 </section>
 </section>
 <section id="confronto-tra-spazio-target-e-percettivo" class="level2">
@@ -7292,7 +7293,7 @@ w_i = \frac{N_i}{M},
 </div>
 </div>
 </div>
-<p>Il confronto tra la distanza media calcolata tramite media semplice e quella ottenuta mediante media ponderata mostra differenze minime. Questo risultato indica che lo sbilanciamento nel numero di valutazioni non influisce in modo sostanziale sulla stima della distanza media globale; pertanto, nelle analisi successive viene mantenuta la media semplice delle distanze.</p>
+<p>Il confronto tra la distanza media calcolata tramite media semplice e quella ottenuta mediante media ponderata mostra differenze minime. Questo risultato indica che, nel presente dataset, la diversa numerosità di valutazioni per brano non altera in modo rilevante la stima della distanza media globale; per le analisi successive viene pertanto utilizzata la media semplice delle distanze.</p>
 </section>
 </section>
 <section id="consistenza-tra-spazio-target-e-percettivo" class="level3">
@@ -7813,7 +7814,7 @@ w_i = \frac{N_i}{M},
 </div>
 </div>
 </div>
-<p>Il Mantel test mostra una correlazione positiva e significativa tra le matrici di distanza dei due spazi (r = 0.45, p = 0.0001), indicando che relazioni di similarità tra i brani nello spazio percettivo tendono a riflettersi anche nello spazio target. L’analisi di Procrustes conferma questo risultato, evidenziando un allineamento significativo ma non perfetto tra le due configurazioni. Nel complesso, i risultati suggeriscono la presenza di una struttura condivisa tra spazio target e percettivo, pur in presenza di differenze locali tra i singoli brani.</p>
+<p>Il Mantel test evidenzia una correlazione positiva e statisticamente significativa tra le matrici di distanza nei due spazi, indicando che le relazioni di similarità tra i brani nello spazio percettivo tendono a riflettersi anche nello spazio target. L’analisi di Procrustes mostra un allineamento significativo ma non perfetto tra le due configurazioni. Considerati congiuntamente, questi risultati indicano una coerenza strutturale globale tra lo spazio target e lo spazio percettivo, pur in presenza di differenze locali tra i singoli brani.</p>
 </section>
 <section id="matrice-di-correlazione-tra-vettori-percettivi-e-vettori-target" class="level3">
 <h3 class="anchored" data-anchor-id="matrice-di-correlazione-tra-vettori-percettivi-e-vettori-target">Matrice di correlazione tra vettori percettivi e vettori target</h3>
@@ -7860,7 +7861,7 @@ w_i = \frac{N_i}{M},
 <span id="cb21-39"><a href="#cb21-39" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">axis.text.x =</span> <span class="fu">element_text</span>(<span class="at">angle =</span> <span class="dv">45</span>, <span class="at">hjust =</span> <span class="dv">1</span>),</span>
 <span id="cb21-40"><a href="#cb21-40" aria-hidden="true" tabindex="-1"></a>        <span class="at">panel.grid =</span> <span class="fu">element_blank</span>()) <span class="sc">+</span></span>
 <span id="cb21-41"><a href="#cb21-41" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
-<span id="cb21-42"><a href="#cb21-42" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"Heatmap delle distanze: vettori percettivi vs vettori target"</span>,</span>
+<span id="cb21-42"><a href="#cb21-42" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">"Heatmap delle distanze: vettori percettivi- target"</span>,</span>
 <span id="cb21-43"><a href="#cb21-43" aria-hidden="true" tabindex="-1"></a>    <span class="at">x =</span> <span class="st">"Vettore target"</span>,</span>
 <span id="cb21-44"><a href="#cb21-44" aria-hidden="true" tabindex="-1"></a>    <span class="at">y =</span> <span class="st">"Vettore percettivo medio"</span>,</span>
 <span id="cb21-45"><a href="#cb21-45" aria-hidden="true" tabindex="-1"></a>    <span class="at">fill =</span> <span class="st">"Distanza"</span></span>
@@ -7874,7 +7875,7 @@ w_i = \frac{N_i}{M},
 </div>
 </div>
 <p>La diagonale principale della heatmap non è marcata: questo indica che le distanze minime (o comunque molto piccole) non sono tutte tra il vettore percettivo e il vettore target corrispondente. Tuttavia, si possono osservare celle particolarmente scure nella diagonale in corrispondenza dei brani: budino, cioccolato al latte, diavola, radicchio, te verde e tiramisù. Inoltre non sono presenti nella diagonale celle di colore molto chiaro, indicando che, nonostante l’accuratezza non perfetta tra i vettore percettivi e i vettori target, non sono presenti distanze elevate tra vettori corrispondenti.</p>
-<p>Per esploare maggiormente questo aspetto, la tabella seguente riporta, per ciascun brano, il vettore target più vicino in termini di distanza euclidea al vettore percettivo medio corrispondente. Per ogni riga è indicata la distanza minima osservata e se tale minimo coincide con il confronto lungo la diagonale della matrice (ovvero tra un brano e il proprio target).</p>
+<p>Per esplorare maggiormente questo aspetto, la tabella seguente riporta, per ciascun brano, il vettore target più vicino in termini di distanza euclidea al vettore percettivo medio corrispondente. Per ogni riga è indicata la distanza minima osservata e se tale minimo coincide con il confronto lungo la diagonale della matrice (ovvero tra un brano e il proprio target).</p>
 <div class="cell">
 <div class="cell-output-display">
 <div id="ddpuwuosdw" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
@@ -8495,11 +8496,11 @@ w_i = \frac{N_i}{M},
 </div>
 </div>
 </div>
-<p>I risultati mostrano che, per la maggior parte dei brani, il target più vicino non coincide con il target associato allo stesso brano. Tuttavia, i casi di mismatch non appaiono casuali: i brani con una differenza minore tre distanze <em>percettivo-target corrispondente</em> e <em>percettivo-target più vicino</em> risultano frequentemente più vicini a target caratterizzati da profili gustativi simili, suggerendo che la struttura dello spazio percettivo rifletta prevalentemente le prevalenze gustative globali piuttosto che l’identità specifica del singolo brano. Questo pattern è coerente con i risultati dei test globali di consistenza, che indicano una corrispondenza strutturale significativa ma non perfetta tra spazio percettivo e spazio target.</p>
+<p>I risultati mostrano che, per la maggior parte dei brani, il target più vicino in termini di distanza euclidea non coincide con il target associato allo stesso brano. Tuttavia, i casi di mismatch non risultano distribuiti in modo uniforme: per diversi brani, la distanza tra il vettore percettivo medio e il target corrispondente risulta prossima alla distanza minima osservata. Questo pattern è coerente con l’osservazione di una coerenza strutturale globale tra i due spazi, a fronte di un allineamento non puntuale a livello del singolo brano.</p>
 </section>
 </section>
-<section id="test-principale-di-non-causalità-core-claim" class="level2">
-<h2 class="anchored" data-anchor-id="test-principale-di-non-causalità-core-claim">Test principale di non-causalità (CORE CLAIM)</h2>
+<section id="test-principale-di-non-causalità" class="level2">
+<h2 class="anchored" data-anchor-id="test-principale-di-non-causalità">Test principale di non-causalità</h2>
 <section id="permutation-test-sulla-distanza-vettoriale" class="level3">
 <h3 class="anchored" data-anchor-id="permutation-test-sulla-distanza-vettoriale">Permutation test sulla distanza vettoriale</h3>
 <p>Per verificare se la distanza media osservata tra vettori percettivi medi e vettori target sia inferiore a quanto atteso per associazioni casuali, viene applicato un permutation test. Il test consiste nel riassegnare casualmente i vettori target ai vettori percettivi medi, mantenendo invariati i vettori stessi ma rompendo la corrispondenza brano–target. Per ciascuna permutazione viene calcolata la distanza media, ottenendo una distribuzione nulla della statistica. Il confronto tra la distanza media osservata e la distribuzione ottenuta per permutazione consente di valutare la significatività dell’allineamento percettivo–target.</p>
@@ -9027,7 +9028,7 @@ w_i = \frac{N_i}{M},
 </div>
 </div>
 </div>
-<p>Essendo p &lt; 0.05 possiamo concludere che esista una relazione sistematica tra le metadate dei brani e la percezione gustativa dei partecipanti.</p>
+<p>Il p-value stimato risulta inferiore alla soglia di significatività convenzionale (p= 0.05), indicando che la distanza media osservata è significativamente inferiore a quanto atteso sotto l’ipotesi di associazione casuale.</p>
 <p>Il seguente grafico mostra la distribuzione delle distanze medie ottenute mediante la permutazione.</p>
 <div class="cell">
 <div class="cell-output-display">
@@ -9524,15 +9525,15 @@ z_{\text{eff}} = \frac{\mu_{\text{null}} - \bar{d}_{\text{obs}}}{\sigma_{\text{n
 </div>
 </div>
 </div>
-<p>L’effect-size risulta elevato, indicando che la distanza media osservata è di circa <span class="math inline">\(5.91\)</span> deviazioni standard inferiore a quella attesa sotto l’ipotesi nulla. Questo risultato suggerisce che la relazione osservata tra vettori target e vettori percettivi non è solo statisticamente significativa, ma anche di rilevanza sostanziale.</p>
+<p>L’effect size risulta elevato, indicando che la distanza media osservata si colloca a diverse deviazioni standard al di sotto della media della distribuzione nulla. Questo risultato evidenzia che la differenza rispetto all’ipotesi di casualità non è solo statisticamente significativa, ma anche di ampiezza rilevante in termini della metrica utilizzata.</p>
 </section>
 </section>
 </section>
 <section id="conclusioni" class="level2">
 <h2 class="anchored" data-anchor-id="conclusioni">Conclusioni</h2>
-<p>L’analisi dimostra che le associazioni tra i profili gustativi target associati ai brani musicali e lo spazio gustativo percettivo derivato dalle valutazioni dei partecipanti avvengono in modo sistematico. La distanza media osservata tra vettori percettivi e target risulta significativamente inferiore a quella attesa sotto associazioni casuali, come confermato dal test di permutazione e con un’ampia quantificazione dell’effetto.</p>
-<p>La coerenza strutturale tra i due spazi è supportata dalle analisi di Mantel e di Procrustes, che indicano una discreta relazione di similarità tra i brani. Tuttavia, la corrispondenza a livello del singolo brano è limitata: solo una piccola frazione dei brani risulta maggiormente associata al proprio profilo target, e i mismatch avvengono prevalentemente tra target gustativamente simili.</p>
-<p>Nel complesso, i risultati suggeriscono che i metadati gustativi catturano associazioni sistematiche significative nella percezione, pur non consentendo un’identificazione univoca e affidabile del singolo brano.</p>
+<p>L’analisi ha mostrato che le associazioni tra i profili gustativi target associati ai brani musicali e lo spazio gustativo percettivo derivato dalle valutazioni dei partecipanti presentano una struttura non casuale. In particolare, la distanza media osservata tra vettori percettivi medi e vettori target risulta significativamente inferiore a quella attesa sotto l’ipotesi di associazione casuale, come evidenziato dal permutation test e dalla quantificazione dell’ampiezza dell’effetto.</p>
+<p>La coerenza strutturale tra lo spazio target e lo spazio percettivo è ulteriormente supportata dalle analisi di Mantel e di Procrustes, che indicano una relazione significativa tra le rispettive strutture di distanza. Tuttavia, l’allineamento a livello del singolo brano risulta limitato: solo una parte dei brani presenta una distanza minima tra il vettore percettivo medio e il proprio vettore target, mentre i casi di mismatch si verificano prevalentemente tra brani caratterizzati da profili gustativi simili.</p>
+<p>Nel complesso, i risultati indicano che i metadati gustativi utilizzati consentono di catturare regolarità globali nello spazio percettivo, pur non permettendo una corrispondenza univoca e puntuale tra singoli brani e profili target. Questo quadro riassume in modo coerente gli esiti delle analisi condotte e fornisce una base quantitativa per le considerazioni presentate nell’articolo principale.</p>
 </section>
 </section>
 
