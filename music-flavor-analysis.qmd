@@ -77,7 +77,9 @@ raw_df <- read.csv("data/data.csv", stringsAsFactors = FALSE) %>%
 
 ## Descrizione del campione
 
-In questa sezione viene riportata una descrizione del campione di partecipanti incluso nell’analisi, sulla base delle informazioni demografiche e delle caratteristiche individuali raccolte tramite questionario. Le statistiche descrittive sono presentate in forma tabellare al fine di fornire una panoramica delle principali caratteristiche del campione analizzato.
+In questa sezione viene presentata una descrizione dettagliata del campione di partecipanti incluso nell’analisi. I dati relativi ai partecipanti sono stati raccolti tramite questionario.
+
+Le statistiche descrittive relative all’età dei partecipanti sono riportate in Tabella @tbl-eta. Le distribuzioni delle variabili categoriali — genere, etnia, esperienza enogastronomica, esperienza musicale, presenza di disturbi uditivi e gustativi/olfattivi e dispositivo di ascolto — sono invece presentate nelle Tabelle @tbl-genere–@tbl-device, al fine di fornire una panoramica completa delle principali caratteristiche del campione analizzato.
 
 ```{r echo=FALSE}
 # 1) dataframe per tabelle demografiche
@@ -225,9 +227,10 @@ demo_df <- demo_df %>%
   )
 ```
 
-**Età**
-
 ```{r echo=FALSE}
+#| echo: false
+#| label: tbl-eta
+#| tbl-cap: "Statistiche descrittive dell’età dei partecipanti (N = 49). Sono riportati la media con deviazione standard e l’intervallo minimo–massimo espresso in anni."
 
 tibble(
   Età = c("Media (DS)", "Min–Max"),
@@ -237,55 +240,56 @@ tibble(
   )
 ) %>%
   gt() %>%
-  cols_align(
-    align = "left",
-    columns = 1
-  ) %>%
-  cols_align(
-    align = "center",
-    columns = -1
-  )
+  cols_align(align = "left", columns = 1) %>%
+  cols_align(align = "center", columns = -1)
 ```
 
-**Genere**
-
 ```{r echo=FALSE}
+#| label: tbl-genere
+#| tbl-cap: "Distribuzione del genere dei partecipanti. I valori sono espressi come frequenze assolute e percentuali sul totale del campione"
+
 make_freq_table(demo_df, gender, "Genere")
 ```
 
-**Etnia**
-
 ```{r echo=FALSE}
+#| label: tbl-etnia
+#| tbl-cap: "Distribuzione dell’etnia dichiarata dai partecipanti. I dati sono presentati come numero di osservazioni e percentuale sul campione totale."
+
 make_freq_table(demo_df, ethnicity, "Etnia")
 ```
 
-**Esperienza enogastronomica**
-
 ```{r echo=FALSE}
+#| label: tbl-eating-exp
+#| tbl-cap: "Livello di esperienza enogastronomica dei partecipanti (professionista, amatore, non esperto), espresso in termini di frequenze assolute e percentuali."
+
 make_freq_table(demo_df, eating_experience, "Esperienza enogastronomica")
 ```
 
-**Esperienza musicale**
-
 ```{r echo=FALSE}
+#| label: tbl-hearing-exp
+#| tbl-cap: "Distribuzione dell’esperienza musicale dei partecipanti. Le categorie indicano il livello di familiarità con l’ascolto o la pratica musicale."
+
 make_freq_table(demo_df, hearing_experience, "Esperienza musicale")
 ```
 
-**Disturbi uditivi**
-
 ```{r echo=FALSE}
+#| label: tbl-hearing-imp
+#| tbl-cap: "Presenza di disturbi uditivi auto-riferiti dai partecipanti. I valori indicano il numero e la percentuale di risposte affermative e negative."
+
 make_freq_table(demo_df, hearing_impairments, "Disturbi uditivi")
 ```
 
-**Disturbi gustaivi e/o olfattivi**
-
 ```{r echo=FALSE}
+#| label: tbl-taste-imp
+#| tbl-cap: "Presenza di disturbi gustativi e/o olfattivi auto-riferiti dai partecipanti, espressa come frequenze assolute e percentuali."
+
 make_freq_table(demo_df, taste_impairments, "Disturbi gustativi/olfattivi")
 ```
 
-**Dispositivo di ascolto utilizzato**
-
 ```{r echo=FALSE}
+#| label: tbl-device
+#| tbl-cap: "Tipologia di dispositivo di ascolto utilizzato dai partecipanti durante l’esperimento. I dati sono riportati come numero di osservazioni e percentuale sul campione totale."
+
 make_freq_table(demo_df, device, "Dispositivo di ascolto utilizzato")
 ```
 
@@ -387,6 +391,12 @@ d_long <- d_long %>%
 ```
 
 ```{r echo=FALSE}
+#| echo: false
+#| label: fig-zscore-boxplot
+#| fig-cap: "Distribuzione dei rating normalizzati (z-score) per ciascuna dimensione gustativa. Le boxplot riassumono mediana e intervalli interquartili; i punti rappresentano le osservazioni individuali (jitter). La linea tratteggiata indica lo zero, corrispondente alla media dopo la standardizzazione."
+#| fig-alt: "Boxplot dei rating z-score per ciascun gusto con punti jitter e linea orizzontale a zero."
+#| 
+
 #grafico distribuzioni per gusto
 ggplot(d_long, aes(x = gusto, y = rating_z)) +
   geom_hline(yintercept = 0, linetype = "dashed") +
@@ -401,34 +411,43 @@ ggplot(d_long, aes(x = gusto, y = rating_z)) +
 
 ```
 
-Il grafico mostra le distribuzioni dei rating normalizzati per ciascuna dimensione gustativa. Dopo la normalizzazione, le distribuzioni risultano centrate attorno allo zero, consentendo il confronto tra dimensioni. La dispersione delle valutazioni non è uniforme tra i gusti, con alcune dimensioni che mostrano una variabilità maggiore. La presenza di valori estremi riflette la variabilità delle associazioni percettive riportate dai partecipanti e non ha richiesto ulteriori procedure di filtraggio.
+Come mostrato in @fig-zscore-boxplot, dopo la normalizzazione le distribuzioni dei rating risultano centrate attorno allo zero, rendendo possibile il confronto tra dimensioni gustative. La dispersione non è uniforme tra i gusti: alcune dimensioni presentano una variabilità maggiore, indicando una differente eterogeneità nelle associazioni percettive riportate dai partecipanti. 
 
 -   Normalizzazione dei vettori target:
+
+I vettori target normalizzati sono riportati in @tbl-target-z; la standardizzazione garantisce che le grandezze target siano espresse sulla stessa scala dei rating percettivi normalizzati.
 
 ```{r}
 target_z <- target %>%
   mutate(across(c(acido, amaro, dolce, piccante, salato), as.numeric)) %>%
   mutate(across(c(acido, amaro, dolce, piccante, salato),
-                ~ as.vector(scale(.))))
+            ~ as.vector(scale(.))))
+```
+
+```{r}
+#| echo: false
+#| label: tbl-target-z
+#| tbl-cap: "Vettori target normalizzati tramite z-score per ciascuna dimensione gustativa. "
 target_z %>%
   knitr::kable(
     digits = 3,
-    caption = "Vettori target normalizzati (z-score)"
+    caption = "Vettori target normalizzati"
   )
 
 ```
 
 ### PCA dei vettori target normalizzati
 
-Visualizzazione dei vettori percettivi medi nello spazio delle prime due
-componenti principali (PCA) per esplorare la struttura dei brani nello
-spazio gustativo.
+In questa sezione viene applicata un’Analisi delle Componenti Principali (PCA) ai vettori target normalizzati al fine di esplorare la struttura dei brani nello spazio gustativo multidimensionale. In particolare, la proiezione dei dati sulle prime due componenti principali consente di identificare eventuali raggruppamenti tra brani caratterizzati da profili gustativi simili e di analizzare le relazioni tra le dimensioni gustative di base.
 
-Osservando la proiezione sulle prime due componenti è possibile identificare raggruppamenti tra brani con profili gustativi percepiti simili.
-
-Nel grafico, ciascun punto rappresenta un brano e ciascuna freccia i vettori gustativi di base.
+La rappresentazione grafica della PCA è riportata in @fig-pca-target. Nel grafico, ciascun punto rappresenta un brano, mentre le frecce indicano i vettori associati alle dimensioni gustative di base; la direzione e l’orientamento delle frecce riflettono il contributo di ciascuna dimensione alle componenti principali.
 
 ```{r}
+#| echo: false
+#| label: fig-pca-target
+#| fig-cap: "Proiezione dei vettori target normalizzati nello spazio delle prime due componenti principali (PCA). Ogni punto rappresenta un brano, le frecce indicano i vettori delle dimensioni gustative di base. Gli assi riportano la percentuale di varianza spiegata da ciascuna componente."
+#| fig-alt: "Grafico PCA dei vettori target normalizzati"
+
 # PCA sui vettori target normalizzati
 tgt_pca_data <- target_z %>% select(acido, amaro, dolce, piccante, salato)
 tgt_pca_res <- prcomp(tgt_pca_data, center = TRUE, scale. = TRUE)
@@ -483,7 +502,7 @@ ggplot(tgt_pca_df, aes(x = PC1, y = PC2, shape = factor(id))) +
   )
 ```
 
-La PCA dei vettori target normalizzati evidenzia una struttura coerente nello spazio gustativo. La proiezione sulle prime due componenti principali mostra relazioni sistematiche tra le dimensioni di base: la dimensione *dolce* risulta orientata in direzione opposta rispetto a *salato* e *piccante*, indicando una relazione di anticorrelazione nello spazio target, mentre *amaro* e *acido* presentano direzioni simili, suggerendo una tendenza alla co-variazione. Le dimensioni *salato* e *piccante* risultano inoltre allineate, indicando una possibile associazione nel modello target.
+Come mostrato in @fig-pca-target, la PCA dei vettori target normalizzati evidenzia una struttura coerente nello spazio gustativo. La proiezione sulle prime due componenti principali mostra relazioni sistematiche tra le dimensioni di base: la dimensione dolce risulta orientata in direzione opposta rispetto a salato e piccante, indicando una relazione di anticorrelazione nello spazio target. Al contrario, amaro e acido presentano direzioni simili, suggerendo una tendenza alla co-variazione. Le dimensioni salato e piccante risultano inoltre allineate, indicando una possibile associazione nel modello target.
 
 
 ## Statistica descrittiva per dimensione gustativa
@@ -492,10 +511,7 @@ In questa sezione viene presentata un’analisi descrittiva delle valutazioni pe
 
 ### Distribuzione delle valutazioni per dimensione gustativa
 
-In questa fase viene calcolata la media e deviazione standard delle
-valutazioni percettive per ogni dimensione gustativa, con l’obiettivo di
-descrivere l’uso della scala Likert (1–7) e verificare l’eventuale
-presenza di ceiling o floor effects.
+In questa fase vengono calcolate media e deviazione standard delle valutazioni percettive per ciascuna dimensione gustativa, con l’obiettivo di: (i) descrivere l’uso della scala Likert (1–7) nelle diverse dimensioni e (ii) verificare la presenza di eventuali floor effects (accumulo verso 1) o ceiling effects (accumulo verso 7). Le statistiche riassuntive per ciascun gusto sono riportate in @tbl-descrittive-gusti, mentre l’andamento delle distribuzioni è visualizzato tramite boxplot (@fig-boxplot-gusti) e istogrammi per dimensione (@fig-istogrammi-gusti).
 
 ```{r}
 descrittive_gusti <- d_long %>%
@@ -505,7 +521,12 @@ descrittive_gusti <- d_long %>%
     Deviazione_Standard = sd(rating),
     .groups = "drop"
   )
+```
 
+```{r}
+#| echo: false
+#| label: tbl-descrittive-gusti
+#| tbl-cap: "Statistiche descrittive delle valutazioni percettive per dimensione gustativa sulla scala Likert (1–7). Per ciascun gusto sono riportate la media e la deviazione standard."
 descrittive_gusti %>%
   gt() %>%
   fmt_number(
@@ -522,18 +543,23 @@ descrittive_gusti %>%
   )
 ```
 
-Le statistiche descrittive sono affiancate da una rappresentazione
-grafica delle distribuzioni delle valutazioni per ciascuna dimensione
-gustativa.
+```{r}
+#| echo: false
+#| label: fig-boxplot-gusti
+#| fig-cap: "Boxplot delle valutazioni percettive (Likert 1–7) per ciascuna dimensione gustativa. Il boxplot riassume la mediana e l’intervallo interquartile; i baffi rappresentano l’estensione della distribuzione secondo la regola standard."
+#| fig-alt: "Boxplot dei rating Likert (1-7) per ciascun gusto."
 
-```{r echo=FALSE}
 ggplot(d_long, aes(x = gusto, y = rating)) +
   geom_boxplot() +
   theme_minimal() +
   labs(x = "Gusto", y = "Rating Likert (1-7)")
 ```
 
-```{r echo=FALSE}
+```{r}
+#| echo: false
+#| label: fig-istogrammi-gusti
+#| fig-cap: "Istogrammi delle valutazioni percettive (Likert 1–7) separati per dimensione gustativa. Ogni pannello mostra la frequenza delle risposte, permettendo di valutare la copertura del range della scala e la possibile presenza di accumuli verso i valori estremi."
+#| fig-alt: "Istogrammi dei rating Likert (1-7) per ciascun gusto, in pannelli separati."
 ggplot(d_long, aes(x = rating)) +
   geom_histogram(binwidth = 1, boundary = 0.5) +
   facet_wrap(~ gusto) +
@@ -541,14 +567,13 @@ ggplot(d_long, aes(x = rating)) +
   labs(x = "Rating Likert (1-7)", y = "Frequenza")
 ```
 
-L’ispezione dei boxplot e degli istogrammi mostra che, per tutte le dimensioni gustative, le valutazioni coprono l’intero range della scala Likert. Per le dimensioni *acido*, *amaro*, *dolce* e *piccante*, le distribuzioni risultano prevalentemente concentrate su valori bassi, pur mantenendo una presenza non trascurabile di valutazioni intermedie e alte. La dimensione *salato* presenta una distribuzione più centrata e una maggiore dispersione lungo la scala. Nel complesso, non emergono evidenze di ceiling o floor effects marcati, suggerendo un utilizzo adeguato della scala di valutazione da parte dei partecipanti.
-
+L’ispezione delle distribuzioni (@fig-boxplot-gusti e @fig-istogrammi-gusti) mostra che, per tutte le dimensioni gustative, le valutazioni coprono l’intero range della scala Likert. Per le dimensioni acido, amaro, dolce e piccante, le distribuzioni risultano prevalentemente concentrate su valori bassi, pur mantenendo una presenza non trascurabile di valutazioni intermedie e alte. La dimensione salato presenta una distribuzione più centrata e una maggiore dispersione lungo la scala. Nel complesso, non emergono evidenze di floor o ceiling effects marcati, suggerendo un utilizzo adeguato della scala di valutazione da parte dei partecipanti.
 
 ## Statistica descrittiva per brano
 
 ### Distribuzione delle valutazioni per brano
 
-In questa sezione viene analizzata la numerosità delle valutazioni disponibili per ciascun brano, al fine di verificare la presenza di eventuali squilibri nel numero di osservazioni tra i diversi stimoli.
+In questa sezione viene analizzata la numerosità di valutazioni disponibili per ciascun brano, con l’obiettivo di verificare la presenza di eventuali squilibri nel numero di osservazioni tra i diversi stimoli. Il conteggio delle valutazioni per brano (una valutazione per coppia partecipante–brano) è sintetizzato in @tbl-nval-brano, mentre la distribuzione complessiva è visualizzata in @fig-nval-brano.
 
 ```{r}
 # calcolo del numero di valutazioni per brano
@@ -557,9 +582,12 @@ n_per_brano <- d_long %>%
   count(brano, name = "N_valutazioni")
 ```
 
-La distribuzione delle valutazioni per brano è visualizzabile nella seguente tabella, in ordine decrescente di numero di valutazione per brano.
+```{r}
+#| echo: false
+#| label: fig-nval-brano
+#| fig-cap: "Numero di valutazioni disponibili per ciascun brano. Ogni barra rappresenta il conteggio delle osservazioni per ciascun brano."
+#| fig-alt: "Numero di valutazioni per ciascun brano."
 
-```{r echo=FALSE}
 # visualizzazione della distribuzione delle valutazioni
 ggplot(n_per_brano, aes(x = brano, y = N_valutazioni)) +
   geom_col() +
@@ -572,6 +600,12 @@ ggplot(n_per_brano, aes(x = brano, y = N_valutazioni)) +
     y = "Numero di valutazioni",
     title = "Numero di valutazioni per brano"
   )
+```
+
+```{r}
+#| echo: false
+#| label: tbl-nval-brano
+#| tbl-cap: "Distribuzione del numero di valutazioni disponibili per brano in ordine decrescente."
 
 # tabella con numero di valutazioni per brano (ordine decrescente)
 n_per_brano %>%
@@ -591,7 +625,7 @@ n_per_brano %>%
   )
 ```
 
-La variabilità osservata nel numero di valutazioni per brano fornisce un’indicazione della distribuzione delle osservazioni tra gli stimoli e viene tenuta in considerazione nelle analisi successive, che si basano su misure aggregate a livello di brano.
+Come mostrato in @fig-nval-brano e in @tbl-nval-brano, la numerosità delle valutazioni non è perfettamente uniforme tra i brani. Questa variabilità fornisce un’indicazione della distribuzione delle osservazioni tra gli stimoli e viene tenuta in considerazione nelle analisi successive, che si basano su misure aggregate a livello di brano.
 
 ### Vettori percettivi medi
 
@@ -627,9 +661,14 @@ merged <- p_mean_wide %>%
 dim(merged)
 ```
 
-I vettori percettivi medi sono visualizzabili nella seguente tabella.
+Questa rappresentazione consente di sintetizzare il profilo gustativo medio di ciascun brano e costituisce la base per le analisi multivariate successive. I valori medi per ciascun gusto e per ciascun brano sono riportati @tbl-vettori-percettivi-medi.
 
-```{r echo=FALSE}
+```{r}
+#| echo: false
+#| label: tbl-vettori-percettivi-medi
+#| tbl-cap: "Vettori percettivi medi per brano. Valori positivi corrispondo a percezioni sopra la media, mentre valori negativi corrispondo a percezione sotto la media."
+
+
 p_mean_wide %>%
   arrange(brano) %>%
   gt() %>%
@@ -653,11 +692,16 @@ p_mean_wide %>%
 
 ### PCA dei vettori percettivi medi
 
-Visualizzazione dei vettori percettivi medi nello spazio delle prime due
-componenti principali (PCA) per esplorare la struttura dei brani nello
-spazio gustativo.
+In questa sezione viene applicata un’Analisi delle Componenti Principali (PCA) ai vettori percettivi medi per brano (@tbl-vettori-percettivi-medi), con l’obiettivo di esplorare la struttura dei brani nello spazio gustativo percettivo e verificare se emergono pattern di co-variazione tra le dimensioni gustative.
+
+La rappresentazione della PCA è riportata @fig-pca-percettivi-medi.
 
 ```{r}
+#| echo: false
+#| label: fig-pca-percettivi-medi
+#| fig-cap: "PCA dei vettori percettivi medi per brano (media degli z-score per ciascun gusto). Ogni punto rappresenta un brano; le frecce indicano i loading delle dimensioni gustative sulle prime due componenti principali. Gli assi riportano la percentuale di varianza spiegata da PC1 e PC2."
+#| fig-alt: "Grafico PCA dei vettori percettivi medi: i punti rappresenteni i brani e le frecce rosse le dimensioni gustative."
+
 # PCA sulle 5 dimensioni gustative
 pca_data <- p_mean_wide %>% select(acido, amaro, dolce, piccante, salato)
 pca_res <- prcomp(pca_data, center = TRUE, scale. = TRUE)
@@ -715,9 +759,9 @@ ggplot(pca_df, aes(x = PC1, y = PC2, shape = factor(id))) +
   )
 ```
 
-La proiezione dei vettori percettivi medi sulle prime due componenti principali evidenzia relazioni sistematiche tra le dimensioni gustative. In particolare, i gusti *dolce* e *amaro* risultano opposti lungo la seconda componente principale, pur condividendo una componente comune lungo la prima dimensione, mentre *salato* e *piccante* mostrano un forte allineamento nello spazio percettivo. Il gusto *acido* emerge come una dimensione distinta, separata dalle altre.
+Come mostrato in @fig-pca-percettivi-medi, la proiezione dei vettori percettivi medi sulle prime due componenti principali evidenzia relazioni sistematiche tra le dimensioni gustative. In particolare, i gusti dolce e amaro risultano opposti lungo la seconda componente principale, pur condividendo una componente comune lungo la prima dimensione, mentre salato e piccante mostrano un marcato allineamento nello spazio percettivo. Il gusto acido emerge come una dimensione relativamente distinta rispetto alle altre.
 
-Nel complesso, la PCA suggerisce la presenza di dipendenze tra le dimensioni gustative nella percezione dei partecipanti, indicando che le valutazioni non sono distribuite in modo indipendente nello spazio gustativo. La geometria globale dello spazio percettivo appare qualitativamente coerente con quella osservata per i vettori target, pur senza una corrispondenza puntuale tra i singoli brani. Questa osservazione è coerente con le analisi di coerenza strutturale presentate nelle sezioni successive.
+Nel complesso, la PCA suggerisce la presenza di dipendenze tra le dimensioni gustative nella percezione dei partecipanti, indicando che le valutazioni non sono distribuite in modo indipendente nello spazio gustativo. Inoltre, la geometria globale dello spazio percettivo appare qualitativamente coerente con quella osservata per i vettori target (cfr. Figura della PCA target nella sezione precedente), pur senza una corrispondenza puntuale tra i singoli brani; questa osservazione è coerente con le analisi di coerenza strutturale presentate nelle sezioni successive.e.
 
 
 ## Confronto tra spazio target e percettivo
@@ -746,7 +790,11 @@ dist_per_brano <- merged %>%
 media_distanza <- mean(dist_per_brano$d)
 ```
 
-```{r echo=FALSE}
+```{r}
+#| echo: false
+#| label: tbl-distanze-target-perc
+#| tbl-cap: "Distanza euclidea tra vettore target e vettore percettivo medio per ciascun brano. La distanza è calcolata nello spazio delle cinque dimensioni gustative ed esprime il grado di discrepanza complessiva tra profilo target e percezione media dei partecipanti. In nota è riportata la distanza media osservata sull’insieme dei brani."
+
 
 # tabella delle distanze
 dist_per_brano %>%
@@ -780,6 +828,8 @@ dist_per_brano %>%
   )
 
 ```
+
+Le distanze calcolate per ciascun brano sono riportate in @tbl-distanze-target-perc, ordinata in senso crescente. La distanza media fornisce un riferimento globale per l’interpretazione dei valori individuali: brani con distanza inferiore alla media mostrano una maggiore coerenza tra vettore target e percezione media, mentre valori più elevati indicano una discrepanza più marcata. Questa misura viene utilizzata nelle analisi successive come indice sintetico di allineamento tra spazio percettivo e spazio target.
 
 #### Distanza media ponderata per numero di valutazioni
 
@@ -820,7 +870,11 @@ dist_weighted <- dist_per_brano %>%
   mutate(peso = N_i / sum(N_i))
 ```
 
-```{r echo=FALSE}
+```{r}
+#| echo: false
+#| label: tbl-confronto-distanza-media
+#| tbl-cap: "Confronto tra distanza media globale calcolata come media semplice e come media ponderata per numerosità di valutazioni per brano (N_i). La media ponderata assegna maggiore peso ai brani con più osservazioni; il confronto permette di valutare l’impatto di eventuali squilibri nella numerosità sulla stima complessiva."
+
 # Distanza media ponderata
 d_obs_weighted <- sum(dist_weighted$d * dist_weighted$peso)
 
@@ -845,7 +899,7 @@ tibble(
 
 ```
 
-Il confronto tra la distanza media calcolata tramite media semplice e quella ottenuta mediante media ponderata mostra differenze minime. Questo risultato indica che, nel presente dataset, la diversa numerosità di valutazioni per brano non altera in modo rilevante la stima della distanza media globale; per le analisi successive viene pertanto utilizzata la media semplice delle distanze.
+Come riportato in @tbl-confronto-distanza-media, il confronto tra la distanza media calcolata tramite media semplice e quella ottenuta mediante media ponderata mostra differenze minime. Questo risultato indica che, nel presente dataset, la diversa numerosità di valutazioni per brano non altera in modo rilevante la stima della distanza media globale; per le analisi successive viene pertanto utilizzata la media semplice delle distanze.
 
 ### Consistenza tra spazio target e percettivo
 
@@ -889,7 +943,12 @@ set.seed(123)
 procrustes_res <- protest(mat_target, mat_perc, permutations = 9999)
 ```
 
-```{r echo=FALSE}
+```{r}
+#| echo: false
+#| label: tbl-coerenza-strutturale
+#| tbl-cap: "Risultati dei test di coerenza strutturale tra spazio target e spazio percettivo"
+
+
 tibble(
   Test = c("Mantel", "Procrustes (PROTEST)"),
   Statistica = c(
@@ -914,13 +973,20 @@ tibble(
   )
 ```
 
-Il Mantel test evidenzia una correlazione positiva e statisticamente significativa tra le matrici di distanza nei due spazi, indicando che le relazioni di similarità tra i brani nello spazio percettivo tendono a riflettersi anche nello spazio target. L’analisi di Procrustes mostra un allineamento significativo ma non perfetto tra le due configurazioni. Considerati congiuntamente, questi risultati indicano una coerenza strutturale globale tra lo spazio target e lo spazio percettivo, pur in presenza di differenze locali tra i singoli brani.
+Come mostrato in @tbl-coerenza-strutturale, il Mantel test evidenzia una correlazione positiva e statisticamente significativa tra le matrici di distanza nei due spazi, indicando che le relazioni di similarità tra i brani nello spazio percettivo tendono a riflettersi in modo moderato anche nello spazio target. L’analisi di Procrustes mostra un allineamento significativo ma non perfetto tra le due configurazioni. Considerati congiuntamente, questi risultati indicano una coerenza strutturale globale tra lo spazio target e lo spazio percettivo, pur in presenza di differenze locali tra i singoli brani.
 
 ###  Matrice di correlazione tra vettori percettivi e vettori target
 
-La matrice di correlazione (heatmap) riporta le distanze euclidee tra i vettori percettivi medi e i vettori target per tutti i brani. Ogni cella rappresenta la distanza tra il vettore percettivo di un brano e il vettore target di un altro brano; valori più bassi indicano una maggiore somiglianza tra le due rappresentazioni. La diagonale principale della matrice corrisponde al confronto tra ciascun brano e il proprio target, mentre le celle fuori diagonale rappresentano confronti incrociati tra brani differenti.
+In questa sezione viene visualizzata una heatmap delle distanze euclidee tra i vettori percettivi medi e i vettori target per tutti i brani, al fine di esplorare in modo globale il grado di corrispondenza tra le due rappresentazioni. Ogni cella della matrice rappresenta la distanza tra il vettore percettivo medio di un brano (righe) e il vettore target di un brano (colonne): valori più bassi indicano maggiore somiglianza tra profilo percepito e profilo target.
+
+Come mostrato in @fig-heatmap-distanze-pt, la diagonale principale corrisponde al confronto tra ciascun brano e il proprio target (confronto “corretto”), mentre le celle fuori diagonale rappresentano confronti incrociati tra brani differenti. La presenza di celle fuori diagonale con distanze relativamente basse suggerisce che, per alcuni brani, il profilo percettivo medio può risultare più vicino al target di un altro brano, evidenziando possibili ambiguità o sovrapposizioni nello spazio gustativo.
 
 ```{r}
+#| echo: false
+#| label: fig-heatmap-distanze-pt
+#| fig-cap: "Heatmap delle distanze euclidee tra vettori percettivi medi (righe) e vettori target (colonne) per tutti i brani. La diagonale rappresenta il confronto tra ciascun brano e il proprio target. Il valore della distanza varia in base all'intensità del colore."
+#| fig-alt: "Heatmap delle distanze euclidee tra vettori percettivi medi e vettori target."
+
 # Matrici nello stesso ordine
 brani <- merged %>% arrange(brano) %>% pull(brano)
 
@@ -983,9 +1049,14 @@ mean(best_match$match_diagonale)
 
 La diagonale principale della heatmap non è marcata: questo indica che le distanze minime (o comunque molto piccole) non sono tutte tra il vettore percettivo e il vettore target corrispondente. Tuttavia, si possono osservare celle particolarmente scure nella diagonale in corrispondenza dei brani: budino, cioccolato al latte, diavola, radicchio, te verde e tiramisù. Inoltre non sono presenti nella diagonale celle di colore molto chiaro, indicando che, nonostante l'accuratezza non perfetta tra i vettore percettivi e i vettori target, non sono presenti distanze elevate tra vettori corrispondenti.
 
-Per esplorare maggiormente questo aspetto, la tabella seguente riporta, per ciascun brano, il vettore target più vicino in termini di distanza euclidea al vettore percettivo medio corrispondente. Per ogni riga è indicata la distanza minima osservata e se tale minimo coincide con il confronto lungo la diagonale della matrice (ovvero tra un brano e il proprio target).
+Per approfondire l’analisi delle discrepanze osservate nella heatmap delle distanze, in questa sezione viene identificato, per ciascun brano, il vettore target più vicino al corrispondente vettore percettivo medio in termini di distanza euclidea.
+Per ogni brano vengono riportati: (i) il target più vicino, (ii) la distanza minima osservata e (iii) un indicatore che segnala se tale minimo coincide con il confronto lungo la diagonale della matrice (ovvero tra un brano e il proprio target). Nei casi in cui il miglior match non coincida con il target corrispondente, viene inoltre riportata la distanza rispetto a quest’ultimo per consentire un confronto diretto. I risultati sono riassunti in @tbl-best-match-target.
 
-```{r echo=FALSE}
+```{r}
+#| echo: false
+#| label: tbl-best-match-target
+#| tbl-cap: "Identificazione del vettore target più vicino a ciascun vettore percettivo medio. Per ogni brano sono riportati il target con distanza euclidea minima, la distanza minima osservata e un indicatore di corrispondenza con il target associato allo stesso brano. Nei casi di mismatch è riportata anche la distanza rispetto al target corrispondente. In nota è indicata la proporzione di match sulla diagonale."
+
 # ===============================
 # Tabella: brani ordinati per miglior match (min distanza perc -> target)
 # + distanza "corrispondente" (diagonale) se il best match NON coincide
@@ -1048,10 +1119,9 @@ tabella_match_con_diag %>%
   )
 ```
 
-I risultati mostrano che, per la maggior parte dei brani, il target più vicino in termini di distanza euclidea non coincide con il target associato allo stesso brano. Tuttavia, i casi di mismatch non risultano distribuiti in modo uniforme: per diversi brani, la distanza tra il vettore percettivo medio e il target corrispondente risulta prossima alla distanza minima osservata. Questo pattern è coerente con l’osservazione di una coerenza strutturale globale tra i due spazi, a fronte di un allineamento non puntuale a livello del singolo brano.
+Come mostrato in @tbl-best-match-target, per la maggior parte dei brani il target più vicino in termini di distanza euclidea non coincide con il target associato allo stesso brano. Tuttavia, i casi di mismatch non risultano distribuiti in modo uniforme: per diversi brani, la distanza tra il vettore percettivo medio e il target corrispondente risulta prossima alla distanza minima osservata. Questo pattern è coerente con l’evidenza di una coerenza strutturale globale tra lo spazio percettivo e lo spazio target, a fronte di un allineamento non puntuale a livello del singolo brano.
 
-
-## Test principale di non-causalità 
+## Test principale di non-casualità 
 
 ### Permutation test sulla distanza vettoriale
 
@@ -1109,6 +1179,14 @@ p_value_table <- ifelse(
   "<<0.001",
   formatC(p_value, format = "f", digits = 4)
 )
+```
+
+I risultati numerici del test (distanza osservata, media e deviazione standard della distribuzione nulla e p-value) sono riportati in @tbl-permutation-test. La distribuzione nulla e la posizione della distanza osservata sono visualizzate in @fig-null-dist-perm.
+
+```{r}
+#| echo: false
+#| label: tbl-permutation-test
+#| tbl-cap: "Risultati del permutation test sulla distanza media percettivo–target."
 
 # tabella per mostrare il p-value
 risultati_perm <- tibble::tibble(
@@ -1133,11 +1211,15 @@ risultati_perm %>%
 
 ```
 
-Il p-value stimato risulta inferiore alla soglia di significatività convenzionale (p= 0.05), indicando che la distanza media osservata è significativamente inferiore a quanto atteso sotto l’ipotesi di associazione casuale.
-
+Come riportato in @tbl-permutation-test, il p-value stimato risulta inferiore alla soglia di significatività convenzionale (p = 0.05), indicando che la distanza media osservata è significativamente inferiore a quanto atteso sotto l’ipotesi di associazione casuale.
 Il seguente grafico mostra la distribuzione delle distanze medie ottenute mediante la permutazione.
 
-```{r echo=FALSE}
+```{r}
+#| echo: false
+#| label: fig-null-dist-perm
+#| fig-cap: "Distribuzione nulla delle distanze medie ottenute tramite permutazione. La linea tratteggiata indica la distanza media osservata; la sua collocazione nella coda sinistra della distribuzione suggerisce un allineamento percettivo–target maggiore di quanto atteso per associazioni casuali."
+#| fig-alt: "Istogramma della distribuzione nulla delle distanze medie permutate."
+
 df_null <- data.frame(d = Dnull)
 
 # se p è molto piccolo scrive <<0.001
@@ -1172,7 +1254,7 @@ ggplot(df_null, aes(x = d)) +
   )
 ```
 
-La distanza media osservata collocata nella coda sinistra della distribuzione indica che l’allineamento percettivo–target è maggiore di quanto atteso per associazioni casuali, in accordo con il p-value stimato.
+Come mostrato in @fig-null-dist-perm, la distanza media osservata è collocata nella coda sinistra della distribuzione nulla, indicando che l’allineamento percettivo–target è maggiore di quanto atteso per associazioni casuali, in accordo con il p-value stimato.
 
 #### Quantificazione dell’effetto misurato (effect size)
 
@@ -1192,7 +1274,11 @@ $\bar{d}_{\text{obs}}$ è la distanza media osservata (ponderata).
 effect_size_z <- (mean(Dnull) - d_obs) / sd(Dnull)
 ```
 
-```{r echo=FALSE}
+```{r}
+#| echo: false
+#| label: tbl-effect-size
+#| tbl-cap: "Ampiezza dell’effetto espressa come z-score rispetto alla distribuzione nulla del permutation test."
+
 #tabella
 tibble(
   `Effect size (z)` = effect_size_z
@@ -1207,7 +1293,7 @@ tibble(
 
 ```
 
-L’effect size risulta elevato, indicando che la distanza media osservata si colloca a diverse deviazioni standard al di sotto della media della distribuzione nulla. Questo risultato evidenzia che la differenza rispetto all’ipotesi di casualità non è solo statisticamente significativa, ma anche di ampiezza rilevante in termini della metrica utilizzata.
+Come riportato in @tbl-effect-size, l’effect size risulta elevato, indicando che la distanza media osservata si colloca a diverse deviazioni standard al di sotto della media della distribuzione nulla. Questo risultato evidenzia che la differenza rispetto all’ipotesi di casualità non è solo statisticamente significativa, ma anche di ampiezza rilevante in termini della metrica utilizzata, rafforzando l’evidenza di un allineamento sostanziale tra spazio percettivo e spazio target.
 
 
 ## Conclusioni
