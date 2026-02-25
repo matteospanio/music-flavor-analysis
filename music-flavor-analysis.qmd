@@ -32,8 +32,6 @@ editor:
 Questo documento riporta l’analisi completa dei dati utilizzati nello studio
 “Musica e Gusto", il cui obiettivo è verificare l’esistenza di una relazione sistematica tra le caratteristiche gustative associate a dei brani da un sistema di raccomandazione musicale per il sonic seasonig e la percezione gustativa riportata dai partecipanti.
 
-L’analisi è stata condotta seguendo il piano descritto nel file README.md del repository, che definisce gli obiettivi, i dati utilizzati e la sequenza delle analisi. In questo documento si riportano i risultati dell’esecuzione di tale piano.
-
 In sintesi, l’analisi prevede:
 
 - normalizzazione delle valutazioni percettive
