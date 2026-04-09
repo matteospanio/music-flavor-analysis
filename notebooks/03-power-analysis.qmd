@@ -1,0 +1,279 @@
+---
+title: Power Analysis
+subtitle: Simulation-based power analysis for the perceptual validation experiment
+---
+
+## Introduction {#sec-power-analysis}
+
+Before conducting the perceptual validation experiment (@sec-experiment), we performed a simulation-based power analysis to determine the minimum sample size required to detect a meaningful effect of the computational model's target values on listeners' perceived flavor ratings.
+
+The analysis targets the linear mixed-effects model:
+
+$$\text{perceived}_{ijk} = \beta_0 + \beta_{\text{target}} \cdot \text{target}_{jk} + u_i + v_j + \varepsilon_{ijk}$$
+
+where $u_i \sim \mathcal{N}(0, \sigma_{\text{subject}}^2)$ is a per-subject random intercept, $v_j \sim \mathcal{N}(0, \sigma_{\text{track}}^2)$ is a per-track random intercept, and $\varepsilon_{ijk} \sim \mathcal{N}(0, \sigma_{\text{residual}}^2)$ is the observation-level residual. The fixed effect $\beta_{\text{target}}$ quantifies the relationship between the model's predicted flavor score and the listener's rating.
+
+### Setup
+
+```{r}
+#| label: setup
+
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(broom.mixed)
+library(furrr)
+
+n_cores <- 8
+plan(multisession, workers = n_cores)
+```
+
+### Simulation Parameters
+
+We set default parameter values based on pilot observations and literature on cross-modal correspondences. Each participant evaluates a random subset of 10 out of 20 tracks, reflecting the incomplete design used in the actual experiment.
+
+```{r}
+#| label: parameters
+
+set.seed(123)
+
+N_TRACKS_TOTAL <- 20
+N_TRACKS_PER_SUBJECT <- 10
+BETA_TARGET <- 0.15
+SD_SUBJECT <- 1.2
+SD_TRACK <- 1
+SD_RESIDUAL <- 1.5
+ALPHA <- 0.05
+
+N_SIM <- 100
+SAMPLE_SIZES <- seq(20, 120, by = 10)
+
+SD_SUBJECT_GRID <- seq(0.2, 2.0, by = 0.3)
+SD_TRACK_GRID <- seq(0.2, 2.0, by = 0.3)
+```
+
+### Simulation Functions
+
+The `simulate_dataset()` function generates synthetic data for a given sample size and variance configuration. For each subject, 10 of 20 tracks are randomly selected. Target values are drawn uniformly from [1, 7], and perceived ratings are generated as a linear function of target plus random effects and residual noise.
+
+```{r}
+#| label: simulate-function
+
+simulate_dataset <- function(n_subjects, beta_target, sd_subject, sd_track, sd_residual) {
+    subjects <- paste0("S", seq_len(n_subjects))
+    tracks <- paste0("T", seq_len(N_TRACKS_TOTAL))
+
+    design <- expand_grid(
+        subject = subjects,
+        track   = tracks
+    ) |>
+        group_by(subject) |>
+        slice_sample(n = N_TRACKS_PER_SUBJECT) |>
+        ungroup()
+
+    subject_re <- tibble(
+        subject = subjects,
+        u_subject = rnorm(n_subjects, 0, sd_subject)
+    )
+
+    track_re <- tibble(
+        track = tracks,
+        u_track = rnorm(N_TRACKS_TOTAL, 0, sd_track)
+    )
+
+    design |>
+        left_join(subject_re, by = "subject") |>
+        left_join(track_re, by = "track") |>
+        mutate(
+            target = runif(n(), 1, 7),
+            perceived = beta_target * target +
+                u_subject +
+                u_track +
+                rnorm(n(), 0, sd_residual)
+        )
+}
+```
+
+The `estimate_power()` function runs `N_SIM` simulations at a given parameter configuration, fits the LMM to each, and returns the proportion of simulations where the target coefficient is significant at $\alpha = 0.05$.
+
+```{r}
+#| label: power-function
+
+estimate_power <- function(n_subjects, beta_target, sd_subject, sd_track, sd_residual) {
+    p_values <- replicate(N_SIM, {
+        data <- simulate_dataset(
+            n_subjects, beta_target, sd_subject, sd_track, sd_residual
+        )
+
+        model <- suppressMessages(lmer(
+            perceived ~ target + (1 | subject) + (1 | track),
+            data = data,
+            REML = FALSE,
+            control = lmerControl(calc.derivs = FALSE)
+        ))
+
+        coefs <- summary(model)$coefficients
+        if ("target" %in% rownames(coefs)) {
+            coefs["target", "Pr(>|t|)"]
+        } else {
+            NA
+        }
+    })
+
+    mean(p_values < ALPHA, na.rm = TRUE)
+}
+```
+
+### Power vs. Sample Size {#sec-power-sample-size}
+
+We evaluate power across sample sizes from 20 to 120 subjects, holding all other parameters at their default values ($\beta_{\text{target}} = 0.15$, $\sigma_{\text{subject}} = 1.2$, $\sigma_{\text{track}} = 1.0$, $\sigma_{\text{residual}} = 1.5$).
+
+```{r}
+#| label: fig-power-sample-size
+#| fig-cap: "Statistical power as a function of sample size. The dashed horizontal line marks the conventional 80% power threshold."
+
+power_sample_size <- tibble(
+    n_subjects = SAMPLE_SIZES
+) |>
+    mutate(
+        power = future_map_dbl(
+            n_subjects,
+            estimate_power,
+            beta_target = BETA_TARGET,
+            sd_subject = SD_SUBJECT,
+            sd_track = SD_TRACK,
+            sd_residual = SD_RESIDUAL,
+            .options = furrr_options(seed = TRUE)
+        )
+    )
+
+ggplot(power_sample_size, aes(x = n_subjects, y = power)) +
+    geom_line(linewidth = 1) +
+    geom_point(size = 2) +
+    geom_hline(yintercept = 0.8, linetype = "dashed") +
+    labs(
+        x = "Number of subjects",
+        y = "Statistical power"
+    ) +
+    theme_minimal()
+```
+
+```{r}
+#| label: tbl-power-sample-size
+#| tbl-cap: "Simulated power by sample size and key operating points for the mixed-effects design."
+
+power_threshold <- 0.8
+
+power_sample_size_table <- power_sample_size |>
+    mutate(power = round(power, 3))
+
+power_at_or_above_threshold <- power_sample_size |>
+    filter(power >= power_threshold) |>
+    arrange(n_subjects)
+
+n_threshold <- if (nrow(power_at_or_above_threshold) > 0) {
+    power_at_or_above_threshold$n_subjects[1]
+} else {
+    NA_integer_
+}
+
+power_at_49 <- approx(
+    x = power_sample_size$n_subjects,
+    y = power_sample_size$power,
+    xout = 49,
+    rule = 2
+)$y
+
+power_operating_points <- tibble(
+    metric = c(
+        "First N with power >= 0.80",
+        "Estimated power at N = 49",
+        "Maximum simulated power"
+    ),
+    value = c(
+        ifelse(is.na(n_threshold), "Not reached", as.character(n_threshold)),
+        sprintf("%.3f", power_at_49),
+        sprintf("%.3f", max(power_sample_size$power))
+    )
+)
+
+power_sample_size_table
+power_operating_points
+```
+
+#### Power vs. Random-Effect Variance {#sec-power-variance}
+
+We fix the sample size at $N = 50$ and vary both subject-level and track-level standard deviations across a grid from 0.2 to 2.0. This characterizes how sensitive the design is to individual differences and track-level variability.
+
+```{r}
+#| label: fig-power-variance
+#| fig-cap: "Statistical power as a function of subject and track random-effect standard deviations, at fixed N = 50."
+
+power_variance <- expand_grid(
+    sd_subject = SD_SUBJECT_GRID,
+    sd_track   = SD_TRACK_GRID
+) |>
+    mutate(
+        power = future_pmap_dbl(
+            list(sd_subject, sd_track),
+            ~ estimate_power(
+                n_subjects = 50,
+                beta_target = BETA_TARGET,
+                sd_subject = ..1,
+                sd_track = ..2,
+                sd_residual = SD_RESIDUAL
+            ),
+            .options = furrr_options(seed = TRUE)
+        )
+    )
+
+ggplot(power_variance, aes(x = sd_subject, y = sd_track, fill = power)) +
+    geom_tile() +
+    scale_fill_viridis_c(limits = c(0, 1)) +
+    labs(
+        x = "Subject SD",
+        y = "Track SD",
+        fill = "Power"
+    ) +
+    theme_minimal()
+```
+
+```{r}
+#| label: tbl-power-variance-summary
+#| tbl-cap: "Summary of the variance-sensitivity grid at fixed N = 50."
+
+power_variance_summary <- power_variance |>
+    summarise(
+        min_power = min(power),
+        median_power = median(power),
+        max_power = max(power),
+        pct_ge_80 = mean(power >= 0.8) * 100
+    ) |>
+    mutate(across(everything(), ~ round(.x, 3)))
+
+power_variance_extremes <- bind_rows(
+    power_variance |>
+        arrange(power) |>
+        slice_head(n = 3) |>
+        mutate(case = "Lowest power"),
+    power_variance |>
+        arrange(desc(power)) |>
+        slice_head(n = 3) |>
+        mutate(case = "Highest power")
+) |>
+    mutate(power = round(power, 3))
+
+power_variance_summary
+power_variance_extremes
+```
+
+```{r}
+#| label: cleanup
+plan(sequential)
+```
+
+## Interpretation
+
+The power curve (@fig-power-sample-size) quantifies how power grows with sample size under the default simulation assumptions. In this setup, the first simulated sample size that reaches the 0.80 threshold is $N=`r n_threshold`$ (Table @tbl-power-sample-size), and the estimated power at the final experimental sample size ($N=49$) is `r sprintf('%.3f', power_at_49)`.
+
+The variance sensitivity analysis (@fig-power-variance) shows that power remains strongly dependent on random-effect variability. Across the full grid at fixed $N=50$, power ranges from `r sprintf('%.3f', power_variance_summary$min_power)` to `r sprintf('%.3f', power_variance_summary$max_power)`, with median `r sprintf('%.3f', power_variance_summary$median_power)` and `r sprintf('%.1f', power_variance_summary$pct_ge_80)`\% of conditions at or above 0.80 (Table @tbl-power-variance-summary). Together, these results support the sample-size choice used in the perceptual validation study reported in @sec-experiment.

@@ -1,0 +1,534 @@
+---
+title: From Food Composition to Taste Vectors
+subtitle: A data-driven pipeline for generating multidimensional gustatory profiles
+jupyter: python3
+---
+
+## Introduction {#sec-taste-vectors}
+
+This chapter documents the computational pipeline used to generate the five-dimensional taste vectors (sweet, bitter, sour, salty, spicy) that serve as target profiles in the perceptual validation experiment (@sec-experiment). Rather than relying on subjective ratings, the pipeline derives taste profiles from food composition data using cheminformatics and machine learning.
+
+The approach proceeds in four stages:
+
+1. **Compound-level taste classification** --- Each chemical compound in FooDB is classified into taste categories using the FART model, which predicts taste probabilities from molecular structure (SMILES strings).
+2. **Food-level aggregation** --- Compound-level predictions are combined with concentration data and nutrient information to produce a six-dimensional taste vector (sweet, bitter, sour, salty, spicy, umami) for each food in the database.
+3. **Dimensionality reduction** --- The umami dimension is merged into salty, yielding a five-dimensional representation aligned with the experimental design.
+4. **Composite dish blending** --- Since the experiment uses complex dishes (e.g., carbonara, tiramisu) rather than raw ingredients, taste vectors for composite foods are created by averaging their ingredient vectors using an interactive t-SNE exploration tool.
+
+### Setup
+
+```{python}
+import json
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+import seaborn as sns
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.preprocessing import StandardScaler
+
+sns.set_theme(style="whitegrid")
+```
+
+### Data Sources
+
+The pipeline relies on three primary data sources:
+
+- **FooDB** [@foodb] --- A comprehensive food composition database containing ~70,000 chemical compounds linked to ~1,000 foods, with concentration data (mg/100 g) from experimental measurements.
+- **FART model** (`FartLabs/FART_Augmented`) --- A HuggingFace text-classification model that predicts taste probabilities from SMILES (Simplified Molecular Input Line Entry System) strings. It produces a probability distribution over five labels: Sweet, Bitter, Sour, Umami, and Undefined.
+- **Nutrient--taste mapping** --- A curated mapping of 37 macronutrients and micronutrients to canonical taste categories, based on sensory science literature.
+
+## Compound-Level Taste Classification {#sec-fart}
+
+The FART (Flavor Assessment by Representation of Taste) model takes as input the SMILES string of a chemical compound and returns a probability distribution over taste categories. This enables automated taste annotation for the thousands of compounds in FooDB that lack sensory labels.
+
+```{python}
+# Load pre-computed FART classifications
+with open("data/foodb_compound_fart_classifications.json") as f:
+    fart_data = json.load(f)
+
+n_compounds = len(fart_data)
+print(f"Number of classified compounds: {n_compounds:,}")
+
+# Convert to DataFrame for analysis
+records = []
+for cid, info in fart_data.items():
+    dist = info["fart_distribution"]
+    records.append({
+        "compound_id": int(cid),
+        "name": info["name"],
+        "Sweet": dist.get("Sweet", 0),
+        "Bitter": dist.get("Bitter", 0),
+        "Sour": dist.get("Sour", 0),
+        "Umami": dist.get("Umami", 0),
+        "Undefined": dist.get("Undefined", 0),
+    })
+
+fart_df = pd.DataFrame(records)
+fart_df["dominant_taste"] = fart_df[["Sweet", "Bitter", "Sour", "Umami", "Undefined"]].idxmax(axis=1)
+print(f"\nDominant taste distribution:")
+print(fart_df["dominant_taste"].value_counts().to_string())
+```
+
+### Example Classifications
+
+```{python}
+#| echo: false
+#| label: tbl-fart-examples
+#| tbl-cap: "Example FART classifications for well-known compounds. Each row shows the probability assigned to each taste category."
+
+examples = ["Sucrose", "Caffeine", "Citric acid", "Capsaicin", "Sodium chloride"]
+example_rows = fart_df[fart_df["name"].isin(examples)][
+    ["name", "Sweet", "Bitter", "Sour", "Umami", "Undefined"]
+].set_index("name")
+# Reorder to match the example list
+example_rows = example_rows.reindex([e for e in examples if e in example_rows.index])
+example_rows.style.format("{:.4f}").set_table_attributes('class="table table-sm"')
+```
+
+### Distribution of Taste Probabilities
+
+```{python}
+#| echo: false
+#| label: fig-fart-distributions
+#| fig-cap: "Distribution of FART-predicted probabilities for each taste category across all classified compounds. Most compounds receive high probability for a single dominant taste."
+
+fig, axes = plt.subplots(1, 5, figsize=(14, 3), sharey=True)
+tastes = ["Sweet", "Bitter", "Sour", "Umami", "Undefined"]
+
+for ax, taste in zip(axes, tastes):
+    ax.hist(fart_df[taste], bins=50, edgecolor="none", alpha=0.8)
+    ax.set_title(taste)
+    ax.set_xlabel("Probability")
+    if ax == axes[0]:
+        ax.set_ylabel("Count")
+    ax.set_xlim(0, 1)
+
+plt.tight_layout()
+plt.show()
+```
+
+The FART model typically assigns high confidence to a single taste category, with most compounds classified as either bitter or sweet --- consistent with the known distribution of tastants in chemical space.
+
+## Food-Level Aggregation {#sec-aggregation}
+
+Individual compound predictions are aggregated to the food level using concentration-weighted summation. The key insight is that a compound's contribution to a food's overall taste profile depends on both its predicted taste and its concentration in the food.
+
+### Weighting Scheme
+
+For each compound $i$ present in food $f$ at concentration $c_i$ (mg/100 g), the perceptual weight is computed using a logarithmic transform:
+
+$$
+w_i = \ln(1 + c_i)
+$$
+
+The logarithmic scaling reflects the Weber--Fechner law: perceived intensity grows logarithmically with stimulus concentration. Each compound's contribution to taste dimension $t$ is then:
+
+$$
+\text{contribution}_i(t) = w_i \times P_{\text{FART}}(t \mid \text{compound}_i)
+$$
+
+where $P_{\text{FART}}(t \mid \text{compound}_i)$ is the FART-predicted probability that compound $i$ belongs to taste category $t$.
+
+### Special Cases
+
+Two taste dimensions require treatment beyond FART predictions:
+
+- **Spicy**: Not a gustatory taste per se but a trigeminal (chemesthetic) sensation. Spiciness is assigned based on semantic matching against FlavorDB descriptors (e.g., "pungent", "hot", "peppery", "capsaicin"). Compounds with matching descriptors contribute $\ln(1 + c_i)$ to the spicy dimension.
+- **Salty**: Primarily driven by mineral nutrients (sodium, potassium, chloride) rather than organic compounds. Nutrient contributions are computed from a curated mapping of 37 nutrients to taste categories.
+
+```{python}
+# Load nutrient-taste mapping
+with open("data/nutrients_flavor.json") as f:
+    nutrients_flavor = json.load(f)
+
+nutrient_taste_df = pd.DataFrame([
+    {"nutrient": entry["nutrient"], "taste": entry["flavor"], "reference": entry.get("reference", "")}
+    for entry in nutrients_flavor
+])
+```
+
+```{python}
+#| echo: false
+#| label: tbl-nutrient-taste
+#| tbl-cap: "Nutrient-to-taste mapping (non-unflavored entries). Each nutrient contributes to the specified taste dimension when present in a food."
+
+display_df = nutrient_taste_df[nutrient_taste_df["taste"] != "unflavored"][["nutrient", "taste"]].sort_values("taste")
+display_df.style.hide(axis="index").set_table_attributes('class="table table-sm"')
+```
+
+### Aggregation Formula
+
+The total taste score for food $f$ in dimension $t$ combines compound-derived and nutrient-derived contributions:
+
+$$
+W_f(t) = \alpha \sum_{i \in \text{compounds}(f)} w_i \cdot P_{\text{FART}}(t \mid i) \;+\; \beta \sum_{j \in \text{nutrients}(f)} \ln(1 + n_j) \cdot \mathbb{1}[\text{taste}(j) = t]
+$$
+
+where $\alpha$ and $\beta$ are compound and nutrient weights (both set to 1.0 by default), and $n_j$ is the nutrient amount in mg/100 g.
+
+### Final Normalization
+
+The raw taste scores are L1-normalized so that the six dimensions sum to 1.0, producing a probability-like profile:
+
+$$
+\hat{W}_f(t) = \frac{\max(0, W_f(t))}{\sum_{t'} \max(0, W_f(t'))}
+$$
+
+## Results
+
+```{python}
+# Load pre-computed food taste vectors
+taste_df = pd.read_csv("data/food_taste_vectors.csv")
+foods_meta = pd.read_csv("data/foodb_foods.csv")
+
+taste_full = taste_df.merge(foods_meta, on="food_id", how="left")
+
+print(f"Foods with taste vectors: {len(taste_full)}")
+print(f"Food groups: {taste_full['food_group'].nunique()}")
+```
+
+```{python}
+#| echo: false
+#| label: tbl-taste-summary
+#| tbl-cap: "Summary statistics of the six taste dimensions across all FooDB foods."
+
+taste_cols = ["sweet", "bitter", "sour", "salty", "spicy", "umami"]
+summary = taste_full[taste_cols].describe().T[["mean", "std", "min", "max"]]
+summary.columns = ["Mean", "SD", "Min", "Max"]
+summary.index = [t.capitalize() for t in summary.index]
+summary.style.format("{:.4f}").set_table_attributes('class="table table-sm"')
+```
+
+```{python}
+#| echo: false
+#| label: fig-taste-means
+#| fig-cap: "Mean taste profile across all FooDB foods. Bitter and sweet dominate, reflecting the molecular composition of most foods."
+
+fig, ax = plt.subplots(figsize=(7, 4))
+means = taste_full[taste_cols].mean()
+means.index = [t.capitalize() for t in means.index]
+means.plot.bar(ax=ax, color=sns.color_palette("Set2", 6), edgecolor="black", linewidth=0.5)
+ax.set_ylabel("Mean proportion")
+ax.set_xlabel("Taste dimension")
+ax.set_title("Mean Taste Profile Across FooDB Foods")
+plt.xticks(rotation=0)
+plt.tight_layout()
+plt.show()
+```
+
+### Food-Group Profiles
+
+```{python}
+#| echo: false
+#| label: fig-taste-by-group
+#| fig-cap: "Mean taste profiles by food group. Groups are ordered by the number of foods they contain."
+
+group_means = taste_full.groupby("food_group")[taste_cols].mean()
+group_counts = taste_full["food_group"].value_counts()
+# Keep groups with >= 10 foods
+large_groups = group_counts[group_counts >= 10].index
+group_means_filtered = group_means.loc[large_groups].sort_index()
+
+fig, ax = plt.subplots(figsize=(10, 6))
+group_means_filtered.plot.barh(ax=ax, stacked=True, color=sns.color_palette("Set2", 6), edgecolor="none")
+ax.set_xlabel("Proportion")
+ax.set_ylabel("")
+ax.legend(title="Taste", labels=[t.capitalize() for t in taste_cols], bbox_to_anchor=(1.02, 1), loc="upper left")
+ax.set_title("Taste Profiles by Food Group (groups with ≥ 10 foods)")
+plt.tight_layout()
+plt.show()
+```
+
+### t-SNE Visualization of the Food Taste Space
+
+```{python}
+#| echo: false
+#| label: fig-tsne-foods
+#| fig-cap: "t-SNE projection of all FooDB foods in the 6-dimensional taste space, colored by food group. Spatial proximity reflects similarity in taste profiles."
+
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(taste_full[taste_cols])
+
+tsne = TSNE(n_components=2, perplexity=30, random_state=42, max_iter=1000)
+X_tsne = tsne.fit_transform(X_scaled)
+
+taste_full["tsne_x"] = X_tsne[:, 0]
+taste_full["tsne_y"] = X_tsne[:, 1]
+
+# Color by top food groups
+top_groups = taste_full["food_group"].value_counts().head(10).index
+taste_full["group_display"] = taste_full["food_group"].where(
+    taste_full["food_group"].isin(top_groups), "Other"
+)
+
+fig, ax = plt.subplots(figsize=(10, 8))
+groups = sorted(taste_full["group_display"].unique())
+palette = sns.color_palette("tab10", len(groups))
+
+for group, color in zip(groups, palette):
+    mask = taste_full["group_display"] == group
+    ax.scatter(
+        taste_full.loc[mask, "tsne_x"],
+        taste_full.loc[mask, "tsne_y"],
+        c=[color], label=group, s=15, alpha=0.6
+    )
+
+ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8, title="Food Group")
+ax.set_xlabel("t-SNE 1")
+ax.set_ylabel("t-SNE 2")
+ax.set_title("t-SNE of FooDB Food Taste Profiles")
+plt.tight_layout()
+plt.show()
+```
+
+### From Six to Five Dimensions {#sec-dim-reduction}
+
+The FART model predicts four gustatory tastes (sweet, bitter, sour, umami) plus an "undefined" category, while spicy and salty are derived from other sources. The perceptual validation experiment (@sec-experiment) uses five taste dimensions: sweet, bitter, sour, salty, and spicy. To align the pipeline output with the experimental design, the umami dimension is merged into salty by addition, followed by L1 re-normalization.
+
+This choice reflects the shared ionic/mineral basis of umami and salty perception: both are mediated by dissolved ions and share perceptual overlap in low-concentration ranges.
+
+```{python}
+#| label: fig-umami-merge
+#| fig-cap: "Effect of merging umami into salty. Left: original 6D profiles for selected foods. Right: resulting 5D profiles after merging and re-normalization."
+
+# Demonstrate the merge on a few illustrative foods
+demo_foods = taste_full[taste_full["name"].isin(
+    ["Cheese", "Eggs", "Coffee", "Chocolate", "Sugar"]
+)].copy()
+
+# Original 6D
+orig_cols = ["sweet", "bitter", "sour", "salty", "spicy", "umami"]
+merged_cols = ["sweet", "bitter", "sour", "salty", "spicy"]
+
+# Merge umami into salty
+demo_merged = demo_foods[merged_cols].copy()
+demo_merged["salty"] = demo_foods["salty"] + demo_foods["umami"]
+
+# Re-normalize
+row_sums = demo_merged.sum(axis=1)
+demo_merged = demo_merged.div(row_sums, axis=0)
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+
+# Original
+demo_foods.set_index("name")[orig_cols].plot.bar(ax=ax1, color=sns.color_palette("Set2", 6), edgecolor="black", linewidth=0.3)
+ax1.set_title("Original 6D Profiles")
+ax1.set_ylabel("Proportion")
+ax1.set_xlabel("")
+ax1.legend(fontsize=7)
+plt.sca(ax1)
+plt.xticks(rotation=45, ha="right")
+
+# Merged
+demo_merged.index = demo_foods["name"].values
+demo_merged.plot.bar(ax=ax2, color=sns.color_palette("Set2", 5), edgecolor="black", linewidth=0.3)
+ax2.set_title("5D Profiles (umami → salty)")
+ax2.set_ylabel("Proportion")
+ax2.set_xlabel("")
+ax2.legend(fontsize=7)
+plt.sca(ax2)
+plt.xticks(rotation=45, ha="right")
+
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+# Apply the merge to all foods
+taste_5d = taste_full[["food_id", "name", "food_group"]].copy()
+taste_5d["sweet"] = taste_full["sweet"]
+taste_5d["bitter"] = taste_full["bitter"]
+taste_5d["sour"] = taste_full["sour"]
+taste_5d["salty"] = taste_full["salty"] + taste_full["umami"]
+taste_5d["spicy"] = taste_full["spicy"]
+
+# Re-normalize
+taste_dims = ["sweet", "bitter", "sour", "salty", "spicy"]
+row_sums = taste_5d[taste_dims].sum(axis=1)
+taste_5d[taste_dims] = taste_5d[taste_dims].div(row_sums, axis=0)
+
+print("5D taste vectors (first 10 rows):")
+taste_5d.head(10)
+```
+
+### Composite Dish Blending {#sec-blending}
+
+The 20 food items used in the perceptual experiment are composite dishes (e.g., carbonara, tiramisu, diavola pizza) rather than individual raw ingredients. Since FooDB contains entries for raw foods and simple products, composite dishes must be constructed by blending their ingredient vectors.
+
+## Methodology
+
+An interactive t-SNE exploration tool was developed for this purpose. The tool displays all FooDB foods projected into a 2D t-SNE space, colored by food group and annotated with taste dimension vectors. Users can:
+
+1. **Search** for ingredient foods by name
+2. **Select** multiple ingredients for a composite dish
+3. **Preview** the blended taste vector (simple arithmetic mean of ingredient vectors)
+4. **Inspect** the blend's position in the t-SNE projection relative to existing foods
+
+The blending formula for a composite dish $D$ composed of ingredients $\{f_1, f_2, \ldots, f_k\}$ is:
+
+$$
+\hat{W}_D(t) = \frac{1}{k} \sum_{i=1}^{k} \hat{W}_{f_i}(t)
+$$
+
+This equal-weight average was chosen as a simple, reproducible baseline. While proportional weighting by recipe amounts could improve accuracy, it would introduce additional subjectivity in specifying ingredient ratios.
+
+### Worked Example
+
+To illustrate the blending process, we construct a taste vector for **Tiramisu** by averaging the 5D profiles of its component ingredients. Note that the exact ingredient selections for the 20 experiment dishes were made interactively during a single session and were not persisted; the example below demonstrates the methodology with representative ingredients.
+
+```{python}
+#| label: fig-blend-example
+#| fig-cap: "Blending example for Tiramisu. Left: individual ingredient taste profiles. Right: resulting blended profile (arithmetic mean)."
+
+# Example: Tiramisu = Eggs + Coffee + Chocolate + Sugar + Cream
+tiramisu_ingredients = ["Eggs", "Coffee", "Chocolate", "Sugar", "Cream"]
+tiramisu_df = taste_5d[taste_5d["name"].isin(tiramisu_ingredients)].copy()
+
+# Compute blend
+blend = tiramisu_df[taste_dims].mean()
+blend_norm = blend / blend.sum()  # Ensure normalization
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4))
+
+# Ingredients
+tiramisu_df.set_index("name")[taste_dims].plot.bar(
+    ax=ax1, color=sns.color_palette("Set2", 5), edgecolor="black", linewidth=0.3
+)
+ax1.set_title("Ingredient Profiles")
+ax1.set_ylabel("Proportion")
+ax1.set_xlabel("")
+ax1.legend(fontsize=7, title="Taste")
+plt.sca(ax1)
+plt.xticks(rotation=45, ha="right")
+
+# Blend
+blend_norm.plot.bar(
+    ax=ax2, color=sns.color_palette("Set2", 5), edgecolor="black", linewidth=0.3
+)
+ax2.set_title("Tiramisu (Blended)")
+ax2.set_ylabel("Proportion")
+ax2.set_xlabel("")
+plt.sca(ax2)
+plt.xticks(rotation=0)
+
+plt.tight_layout()
+plt.show()
+
+print("Tiramisu blend vector:")
+for t in taste_dims:
+    print(f"  {t:>8s}: {blend_norm[t]:.4f}")
+```
+
+## Target Vectors for the Experiment
+
+The final target vectors for the 20 experimental stimuli were generated through this pipeline. @tbl-target-vectors presents the resulting 5D taste profiles.
+
+```{python}
+#| echo: false
+#| label: tbl-target-vectors
+#| tbl-cap: "Target taste vectors for the 20 experimental food items, organized by dominant taste cluster. Values represent proportions in the 5D taste space."
+
+target = pd.read_excel("data/target_vectors.xlsx")
+
+# English labels and cluster ordering
+food_labels = {
+    "carbonara": "Carbonara", "ramen": "Ramen", "fritto_misto": "Fried Seafood",
+    "tiramisu": "Tiramisu", "budino": "Pudding", "vellutata_di_zucca": "Pumpkin Soup",
+    "cioccolato_al_latte": "Milk Chocolate", "mela_alla_cannella": "Cinnamon Apple",
+    "torta_ai_frutti_di_bosco": "Berry Tart",
+    "pompelmo": "Grapefruit", "pomodoro": "Tomato", "spremuta_arancia": "Orange Juice",
+    "cioccolato_fondente": "Dark Chocolate", "radicchio": "Radicchio",
+    "rucola": "Arugula", "te_verde": "Green Tea",
+    "salsa_agropiccante": "Sweet-and-Spicy Sauce", "pollo_al_curry": "Curry Chicken",
+    "diavola": "Diavola Pizza", "salsa_wasabi": "Wasabi Sauce",
+}
+
+food_cluster = {
+    "carbonara": "Salty", "ramen": "Salty", "fritto_misto": "Salty",
+    "tiramisu": "Sweet", "budino": "Sweet", "vellutata_di_zucca": "Sweet",
+    "cioccolato_al_latte": "Sweet", "mela_alla_cannella": "Sweet",
+    "torta_ai_frutti_di_bosco": "Sweet",
+    "pompelmo": "Sour", "pomodoro": "Sour", "spremuta_arancia": "Sour",
+    "cioccolato_fondente": "Bitter", "radicchio": "Bitter",
+    "rucola": "Bitter", "te_verde": "Bitter",
+    "salsa_agropiccante": "Spicy", "pollo_al_curry": "Spicy",
+    "diavola": "Spicy", "salsa_wasabi": "Spicy",
+}
+
+cluster_order = ["Salty", "Sweet", "Sour", "Bitter", "Spicy"]
+food_order = [
+    "carbonara", "ramen", "fritto_misto",
+    "tiramisu", "budino", "vellutata_di_zucca", "cioccolato_al_latte",
+    "mela_alla_cannella", "torta_ai_frutti_di_bosco",
+    "pompelmo", "pomodoro", "spremuta_arancia",
+    "cioccolato_fondente", "radicchio", "rucola", "te_verde",
+    "salsa_agropiccante", "pollo_al_curry", "diavola", "salsa_wasabi",
+]
+
+target["Track"] = target["brano"].map(food_labels)
+target["Cluster"] = target["brano"].map(food_cluster)
+target["_order"] = target["brano"].map({b: i for i, b in enumerate(food_order)})
+target = target.sort_values("_order")
+
+display_cols = {
+    "Cluster": "Cluster", "Track": "Track",
+    "dolce": "Sweet", "amaro": "Bitter", "acido": "Sour",
+    "salato": "Salty", "piccante": "Spicy",
+}
+target_display = target.rename(columns=display_cols)[list(display_cols.values())]
+target_display.style.format(
+    {c: "{:.2f}" for c in ["Sweet", "Bitter", "Sour", "Salty", "Spicy"]},
+    na_rep=""
+).hide(axis="index").set_table_attributes('class="table table-sm"')
+```
+
+```{python}
+#| echo: false
+#| label: fig-target-radar
+#| fig-cap: "Taste profiles of the 20 experimental food items, grouped by dominant taste cluster. Each subplot shows the 5D taste vector as a radar chart."
+
+from matplotlib.patches import FancyBboxPatch
+
+n_clusters = len(cluster_order)
+fig, axes = plt.subplots(1, n_clusters, figsize=(16, 4), subplot_kw=dict(polar=True))
+
+angles = np.linspace(0, 2 * np.pi, len(taste_dims), endpoint=False).tolist()
+angles += angles[:1]
+
+cluster_colors = {
+    "Salty": "#1f77b4", "Sweet": "#ff7f0e", "Sour": "#2ca02c",
+    "Bitter": "#d62728", "Spicy": "#9467bd"
+}
+
+for ax, cluster in zip(axes, cluster_order):
+    cluster_foods = target[target["Cluster"] == cluster]
+    ax.set_title(cluster, fontsize=11, fontweight="bold", pad=15)
+    ax.set_thetagrids(
+        np.degrees(angles[:-1]),
+        labels=[t.capitalize() for t in taste_dims],
+        fontsize=7
+    )
+
+    for _, row in cluster_foods.iterrows():
+        values = [row[c] for c in ["dolce", "amaro", "acido", "salato", "piccante"]]
+        values += values[:1]
+        ax.plot(angles, values, linewidth=1.2, alpha=0.7, color=cluster_colors[cluster])
+        ax.fill(angles, values, alpha=0.08, color=cluster_colors[cluster])
+
+    ax.legend(
+        cluster_foods["Track"].tolist(),
+        loc="upper right", bbox_to_anchor=(1.3, 1.15),
+        fontsize=5, frameon=False
+    )
+
+plt.tight_layout()
+plt.show()
+```
+
+## Conclusions
+
+The pipeline transforms raw food composition data into interpretable, multidimensional taste profiles through a principled sequence of steps: molecular-level taste classification via the FART model, concentration-weighted aggregation, dimensionality reduction (umami → salty), and interactive blending for composite dishes. The resulting 5D vectors capture meaningful gustatory contrasts --- salty dishes like carbonara and ramen differ systematically from sweet items like tiramisu and pudding, and from spicy preparations like wasabi sauce and diavola pizza.
+
+These target vectors serve as the ground-truth predictions of the computational sonic-seasoning system, against which listeners' perceptual ratings are compared in @sec-experiment.

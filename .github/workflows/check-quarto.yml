@@ -1,20 +1,34 @@
-name: Check Quarto notebook
+name: Build and deploy Quarto book
 
 on:
   push:
+    branches: [master]
     paths:
       - "**.qmd"
       - "_quarto.yml"
       - "renv.lock"
+      - "pyproject.toml"
       - "data/**"
+      - "notebooks/**"
       - ".github/workflows/check-quarto.yml"
   pull_request:
     paths:
       - "**.qmd"
       - "_quarto.yml"
       - "renv.lock"
+      - "pyproject.toml"
       - "data/**"
+      - "notebooks/**"
       - ".github/workflows/check-quarto.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -44,7 +58,36 @@ jobs:
 
       - uses: r-lib/actions/setup-renv@v2
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install Python dependencies
+        run: uv sync
+
       - uses: quarto-dev/quarto-actions/setup@v2
 
-      - name: Render Quarto notebook
-        run: quarto render music-flavor-analysis.qmd --to html
+      - name: Render Quarto book
+        env:
+          QUARTO_PYTHON: .venv/bin/python
+        run: quarto render
+
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _output
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

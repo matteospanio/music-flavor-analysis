@@ -1,2 +1,46 @@
 project:
-  title: "music-flavor-analysis"
+  type: book
+  output-dir: _output
+  execute-dir: project
+
+book:
+  title: "Cross-Modal Music-Flavor Correspondences"
+  subtitle: "Companion code for dataset analysis and perceptual validation"
+  author:
+    - name: "Matteo Spanio"
+      affiliation: "University of Padova"
+    - name: "Valentina Frezzato"
+      affiliation: "University of Padova"
+    - name: "Antonio Roda"
+      affiliation: "University of Padova"
+  date: today
+  repo-url: https://github.com/CSCPadova/music-flavor-analysis
+  repo-actions: [issue]
+  chapters:
+    - index.qmd
+    - part: "Dataset Analysis"
+      chapters:
+        - notebooks/01-cross-modal-analysis.qmd
+        - notebooks/02-taste-vectors.qmd
+    - part: "Perceptual Validation"
+      chapters:
+        - notebooks/03-power-analysis.qmd
+        - notebooks/04-perceptual-experiment.qmd
+
+bibliography: references.bib
+
+format:
+  html:
+    theme: cosmo
+    code-fold: true
+    code-tools: true
+    toc: true
+    number-sections: true
+
+jupyter: python3
+
+execute:
+  echo: true
+  warning: false
+  message: false
+  freeze: auto

@@ -1,144 +1,82 @@
-# Sonic Seasoning – Statistical Analysis
+# Cross-Modal Music-Flavor Correspondences
 
-Statistical analysis for the study *"Musica e Gusto"* (Music and Taste), which
-investigates the relationship between the gustatory metadata assigned to music
-tracks by a sonic-seasoning recommendation system and the taste perceptions
-reported by participants.
+Companion code and analysis notebooks for the paper:
 
-**Authors:** Valentina Frezzato, Matteo Spanio — University of Padova,
-Department of Information Engineering
+> **Multimodal Dataset Normalization and Perceptual Validation for Music-Taste Correspondences**
+> Matteo Spanio, Valentina Frezzato, Antonio Roda — University of Padova
 
----
+The rendered notebooks are available at **[CSCPadova.github.io/music-flavor-analysis](https://CSCPadova.github.io/music-flavor-analysis)**.
 
-## Study Design
+## Data
 
-- **Participants:** 49 (no zero-variance responses removed)
-- **Stimuli:** 20 music tracks; each participant rated 10 randomly assigned tracks
-- **Taste dimensions:** salty, sweet, sour, bitter, spicy (5-dimensional Likert
-  scale 1–7)
-- **Target vectors:** gustatory metadata associated with each track by the
-  recommendation system, used as ground truth
+Datasets are archived on Zenodo:
 
-Each track has an associated ground-truth target vector
-**t**_i = (salty, sweet, sour, bitter, spicy), and each participant provides a
-perceptual vector **p**_ij for every track they hear.
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19259231.svg)](https://doi.org/10.5281/zenodo.19259231)
 
----
-
-## Analysis Pipeline
-
-The full analysis is in `music-flavor-analysis.qmd`.
-
-1. **Pre-processing** – Reshape to long format; remove participants with
-   zero-variance responses; z-score normalisation of both perceptual ratings
-   and target vectors (per dimension).
-
-2. **Descriptive statistics** – Distributions per taste dimension and per
-   track; no floor/ceiling effects detected; rating counts per track are
-   moderately unbalanced.
-
-3. **PCA of target vectors** – Sweet is anti-correlated with salty/spicy;
-   bitter and sour co-vary; salty and spicy are aligned.
-
-4. **Mean perceptual vectors** – Per-track mean z-score rating across
-   participants; structure qualitatively consistent with the target space.
-
-5. **Euclidean distances** – Per-track distance d_i between mean perceptual
-   vector and corresponding target vector; weighted and unweighted means
-   are virtually identical, confirming robustness to rating-count imbalance.
-
-6. **Structural consistency (secondary)**
-   - *Mantel test* (Pearson, 9 999 permutations): significant positive
-     correlation between the 20×20 target and perceptual distance matrices.
-   - *Procrustes analysis / PROTEST* (9 999 permutations): significant but
-     imperfect alignment after optimal rotation and scaling.
-
-7. **Main test – permutation test on mean vector distance** (10 000
-   permutations): target–percept assignments are shuffled; the observed mean
-   distance is compared against the null distribution.
-
-8. **Effect size** – z-score of the observed mean distance relative to the null
-   distribution.
-
----
-
-## Key Results
-
-| Test | Result |
-|------|--------|
-| Permutation test (main) | p << 0.001 — observed mean distance falls in the extreme left tail of the null distribution |
-| Effect size (z) | Large — observed distance is several SDs below the null mean |
-| Mantel test | Significant positive correlation between distance matrices |
-| Procrustes (PROTEST) | Significant but moderate structural alignment |
-| Diagonal matches | Partial — several tracks (e.g. budino, cioccolato al latte, diavola, radicchio, tè verde, tiramisù) show the minimum distance to their own target; mismatches occur mainly between tracks with similar gustatory profiles |
-
-The observed mean distance between mean perceptual vectors and target vectors is
-significantly smaller than expected under random association. The gustatory
-metadata capture global regularities in the perceptual space, though one-to-one
-correspondence at the individual track level is limited.
-
----
-
-## Power Analysis
-
-`scripts/power_analysis.R` runs a simulation-based power analysis for the
-secondary linear mixed-effects model (LMM):
-
-```
-perceived ~ target + (1 | subject) + (1 | track)
-```
-
-**Parameters assumed:**
-
-| Parameter | Value |
-|-----------|-------|
-| β_target | 0.15 |
-| SD_subject | 1.2 |
-| SD_track | 1.0 |
-| SD_residual | 1.5 |
-| α | 0.05 |
-
-Two analyses are produced:
-
-1. **Power vs. sample size** (`power_analysis_sample_size.png`) – sample sizes
-   from 20 to 120 subjects (step 10); the 80% power threshold is marked.
-2. **Power vs. random-effect variances** (`power_analysis_variance_heatmap.png`)
-   – heatmap of power at N = 50 subjects across a grid of SD_subject ×
-   SD_track values (0.2–2.0).
-
-Parallel execution uses `furrr` (8 cores by default); set `n_cores` in the
-script to match your hardware.
-
----
-
-## Reproducing the Analysis
-
-### Requirements
-
-- R ≥ 4.5 with `renv` (dependencies are locked in `renv.lock`)
-- Quarto ≥ 1.4 (for the notebook)
-
-### Setup
-
-```r
-renv::restore()   # install locked packages
-```
-
-### Render the notebook
-
-```bash
-quarto render music-flavor-analysis.qmd
-```
-
-### Run the power analysis
-
-```r
-source("scripts/power_analysis.R")
-```
-
-### Data
+Download the data files and place them in the `data/` directory before running the notebooks.
 
 | File | Description |
 |------|-------------|
-| `data/data.csv` | Raw participant ratings (long form after cleaning) |
-| `data/target_vectors.xlsx` | Gustatory target vectors for the 20 tracks |
+| `data/data.csv` | Raw participant ratings (one row per participant x track x dimension) |
+| `data/target_vectors.xlsx` | Ground-truth 5D gustatory target vectors for each of the 20 tracks |
+| `data/small_processed.csv` | Small dataset (257 tracks, human-annotated flavor ratings) |
+| `data/train_processed.csv` | FMA training split (~44K segments, AST-generated flavor labels) |
+| `data/validation_processed.csv` | FMA validation split (~5K segments) |
+| `data/genres.csv` | FMA genre taxonomy (id, title, parent, top_level) |
+| `data/food_taste_vectors.csv` | FooDB foods with 6D taste vectors (sweet, bitter, sour, salty, spicy, umami) |
+| `data/foodb_compound_fart_classifications.json` | FART taste predictions for ~70K FooDB compounds |
+| `data/nutrients_flavor.json` | Nutrient-to-taste mappings (37 entries) |
+| `data/foodb_foods.csv` | FooDB food metadata (id, name, food_group; 992 rows) |
+
+## Notebooks
+
+The project is a [Quarto](https://quarto.org) book with four analysis chapters:
+
+1. **Cross-Modal Dataset Analysis** (`notebooks/01-cross-modal-analysis.qmd`, Python) — Correlation transfer, feature importance, latent factor structure, and text-flavor correspondences across human-annotated and AST-labeled corpora.
+2. **Taste Vector Construction** (`notebooks/02-taste-vectors.qmd`, Python) — Pipeline from FooDB compound concentrations through FART taste classification to 20 experimental target vectors.
+3. **Power Analysis** (`notebooks/03-power-analysis.qmd`, R) — Simulation-based power analysis for the perceptual validation LMM.
+4. **Perceptual Experiment** (`notebooks/04-perceptual-experiment.qmd`, R) — Perceptual validation with 49 participants: z-score normalization, permutation test, Mantel correlation, Procrustes analysis.
+
+## Setup
+
+### Python (Chapters 1-2)
+
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync
+```
+
+### R (Chapters 3-4)
+
+Requires R 4.5+ with `renv`:
+
+```r
+renv::restore()
+```
+
+### Render the book
+
+```bash
+quarto render
+```
+
+The rendered site is written to `_output/`.
+
+## License
+
+Code is released under the [MIT License](LICENSE). Datasets are subject to their respective licenses as described on Zenodo.
+
+## Citation
+
+If you use this code or data, please cite:
+
+```bibtex
+@inproceedings{spanio2026multimodal,
+  title     = {Multimodal Dataset Normalization and Perceptual Validation
+               for Music-Taste Correspondences},
+  author    = {Spanio, Matteo and Frezzato, Valentina and Rod{\`a}, Antonio},
+  booktitle = {Proceedings of the Sound and Music Computing Conference (SMC)},
+  year      = {2026}
+}
+```

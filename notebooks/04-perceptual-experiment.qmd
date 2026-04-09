@@ -1,0 +1,1125 @@
+---
+title: Perceptual Validation Experiment
+subtitle: Testing whether listeners' taste perceptions align with computational model predictions
+---
+
+## Introduction {#sec-experiment}
+
+This chapter reports the perceptual validation experiment designed to test whether the gustatory metadata assigned to music tracks by a computational sonic-seasoning system correlate with listeners' actual taste perceptions. The analysis proceeds through: (1) normalization of perceptual ratings, (2) aggregation into per-track mean perceptual vectors, (3) computation of target--perceptual distances, (4) permutation testing for non-randomness, and (5) structural consistency tests.
+
+The power analysis motivating the experimental design is presented in @sec-power-analysis.
+
+### Setup
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(readxl)
+library(gt)
+library(scales)
+library(vegan)
+library(ggplot2)
+library(forcats)
+
+set.seed(123)
+
+taste_labels_en <- c(
+  salato = "Salty",
+  dolce = "Sweet",
+  acido = "Sour",
+  amaro = "Bitter",
+  piccante = "Spicy"
+)
+
+food_order <- c(
+  # Salty
+  "carbonara", "ramen", "fritto_misto",
+  # Sweet
+  "tiramisu", "budino", "vellutata_di_zucca", "cioccolato_al_latte", "mela_alla_cannella", "torta_ai_frutti_di_bosco",
+  # Sour
+  "pompelmo", "pomodoro", "spremuta_arancia",
+  # Bitter
+  "cioccolato_fondente", "radicchio", "rucola", "te_verde",
+  # Spicy
+  "salsa_agropiccante", "pollo_al_curry", "diavola", "salsa_wasabi"
+)
+
+food_labels_en <- c(
+  carbonara = "Carbonara",
+  ramen = "Ramen",
+  fritto_misto = "Fried Seafood",
+  tiramisu = "Tiramisu",
+  budino = "Pudding",
+  vellutata_di_zucca = "Pumpkin Soup",
+  cioccolato_al_latte = "Milk Chocolate",
+  mela_alla_cannella = "Cinnamon Apple",
+  torta_ai_frutti_di_bosco = "Berry Tart",
+  pompelmo = "Grapefruit",
+  pomodoro = "Tomato",
+  spremuta_arancia = "Orange Juice",
+  cioccolato_fondente = "Dark Chocolate",
+  radicchio = "Radicchio",
+  rucola = "Arugula",
+  te_verde = "Green Tea",
+  salsa_agropiccante = "Sweet-and-Spicy Sauce",
+  pollo_al_curry = "Curry Chicken",
+  diavola = "Diavola Pizza",
+  salsa_wasabi = "Wasabi Sauce"
+)
+
+food_group <- c(
+  carbonara = "Salty",
+  ramen = "Salty",
+  fritto_misto = "Salty",
+  tiramisu = "Sweet",
+  budino = "Sweet",
+  vellutata_di_zucca = "Sweet",
+  cioccolato_al_latte = "Sweet",
+  mela_alla_cannella = "Sweet",
+  torta_ai_frutti_di_bosco = "Sweet",
+  pompelmo = "Sour",
+  pomodoro = "Sour",
+  spremuta_arancia = "Sour",
+  cioccolato_fondente = "Bitter",
+  radicchio = "Bitter",
+  rucola = "Bitter",
+  te_verde = "Bitter",
+  salsa_agropiccante = "Spicy",
+  pollo_al_curry = "Spicy",
+  diavola = "Spicy",
+  salsa_wasabi = "Spicy"
+)
+
+to_food_label <- function(x) {
+  unname(food_labels_en[as.character(x)])
+}
+
+ordered_food <- function(x) {
+  factor(as.character(x), levels = food_order)
+}
+
+ordered_food_label <- function(x) {
+  factor(to_food_label(x), levels = unname(food_labels_en[food_order]))
+}
+```
+
+```{r}
+raw_df <- read.csv("data/data.csv", stringsAsFactors = FALSE) %>%
+  clean_names()
+```
+
+
+### Sample Description
+
+Descriptive statistics for participant age are reported in @tbl-age. The distributions of categorical variables --- gender, ethnicity, gastronomic experience, musical experience, hearing impairments, taste/smell impairments, and listening device --- are presented in @tbl-gender through @tbl-device.
+
+```{r echo=FALSE}
+demo_df <- raw_df %>%
+  distinct(
+    participant,
+    age,
+    gender,
+    ethnicity,
+    eating_experience,
+    hearing_experience,
+    hearing_impairments,
+    taste_impairments,
+    device
+  )
+
+age_summary <- demo_df %>%
+  summarise(
+    N = sum(!is.na(age)),
+    Mean = round(mean(age, na.rm = TRUE), 1),
+    SD = round(sd(age, na.rm = TRUE), 1),
+    Min = min(age, na.rm = TRUE),
+    Max = max(age, na.rm = TRUE)
+  )
+
+make_freq_table <- function(df, var, var_label) {
+  df %>%
+    count({{ var }}, name = "n") %>%
+    arrange({{ var }}) %>%
+    mutate(
+      Percentage = round(100 * n / sum(n), 1),
+      Value = paste0(n, " (", Percentage, "%)")
+    ) %>%
+    select({{ var }}, Value) %>%
+    gt() %>%
+    cols_label(
+      !!rlang::as_name(rlang::ensym(var)) := var_label,
+      Value = "N (%)"
+    ) %>%
+    cols_align(align = "left", columns = 1) %>%
+    cols_align(align = "center", columns = -1)
+}
+
+demo_df <- demo_df %>%
+  mutate(
+    gender = recode(as.integer(gender),
+      `1` = "Male",
+      `2` = "Female",
+      `3` = "Other",
+      `4` = "Prefer not to say",
+      .default = NA_character_
+    ),
+
+    ethnicity = recode(as.integer(ethnicity),
+      `1`  = "American Indian, Alaska Native, or Indigenous",
+      `2`  = "Arab American, Middle Eastern, or North African",
+      `3`  = "Asian or Asian American",
+      `4`  = "Black or African American",
+      `5`  = "Bi/Multi-racial",
+      `6`  = "Hispanic/Latino/a/x or Spanish origin",
+      `7`  = "Native Hawaiian or Pacific Islander",
+      `8`  = "Southeast Asian",
+      `9`  = "White/European American",
+      `10` = "Not listed",
+      `11` = "Prefer not to say",
+      .default = NA_character_
+    ),
+
+    hearing_experience = recode(as.integer(hearing_experience),
+      `1` = "Professional",
+      `2` = "Amateur",
+      `3` = "Non-expert",
+      .default = NA_character_
+    ),
+
+    eating_experience = recode(as.integer(eating_experience),
+      `1` = "Professional",
+      `2` = "Amateur",
+      `3` = "Non-expert",
+      .default = NA_character_
+    ),
+
+    hearing_impairments = recode(as.integer(hearing_impairments),
+      `1` = "Yes",
+      `2` = "No",
+      .default = NA_character_
+    ),
+
+    taste_impairments = recode(as.integer(taste_impairments),
+      `1` = "Yes",
+      `2` = "No",
+      .default = NA_character_
+    ),
+
+    device = recode(as.integer(device),
+      `1` = "Headphones",
+      `2` = "Device speakers",
+      `3` = "Hi-Fi system",
+      `4` = "Other",
+      .default = NA_character_
+    )
+  ) %>%
+  mutate(across(
+    c(gender, ethnicity, eating_experience, hearing_experience,
+      hearing_impairments, taste_impairments, device),
+    ~ trimws(.x)
+  )) %>%
+  mutate(
+    gender = fct_relevel(gender,
+      "Male", "Female", "Other", "Prefer not to say"
+    ),
+    hearing_experience = fct_relevel(hearing_experience,
+      "Professional", "Amateur", "Non-expert"
+    ),
+    eating_experience = fct_relevel(eating_experience,
+      "Professional", "Amateur", "Non-expert"
+    ),
+    hearing_impairments = fct_relevel(hearing_impairments,
+      "Yes", "No", "Prefer not to say"
+    ),
+    taste_impairments = fct_relevel(taste_impairments,
+      "Yes", "No", "Prefer not to say"
+    ),
+    device = fct_relevel(device,
+      "Headphones", "Device speakers", "Hi-Fi system", "Other"
+    ),
+    ethnicity = fct_relevel(ethnicity,
+      "American Indian, Alaska Native, or Indigenous",
+      "Arab American, Middle Eastern, or North African",
+      "Asian or Asian American",
+      "Black or African American",
+      "Bi/Multi-racial",
+      "Hispanic/Latino/a/x or Spanish origin",
+      "Native Hawaiian or Pacific Islander",
+      "Southeast Asian",
+      "White/European American",
+      "Not listed",
+      "Prefer not to say"
+    )
+  )
+```
+
+```{r echo=FALSE}
+#| label: tbl-age
+#| tbl-cap: "Descriptive statistics for participant age (N = 49)."
+
+tibble(
+  Age = c("Mean (SD)", "Min--Max"),
+  Value = c(
+    paste0(age_summary$Mean, " (", age_summary$SD, ")"),
+    paste0(age_summary$Min, "--", age_summary$Max)
+  )
+) %>%
+  gt() %>%
+  cols_align(align = "left", columns = 1) %>%
+  cols_align(align = "center", columns = -1)
+```
+
+```{r echo=FALSE}
+#| label: tbl-gender
+#| tbl-cap: "Gender distribution of participants."
+
+make_freq_table(demo_df, gender, "Gender")
+```
+
+```{r echo=FALSE}
+#| label: tbl-ethnicity
+#| tbl-cap: "Self-reported ethnicity of participants."
+
+make_freq_table(demo_df, ethnicity, "Ethnicity")
+```
+
+```{r echo=FALSE}
+#| label: tbl-eating-exp
+#| tbl-cap: "Level of gastronomic experience."
+
+make_freq_table(demo_df, eating_experience, "Gastronomic experience")
+```
+
+```{r echo=FALSE}
+#| label: tbl-hearing-exp
+#| tbl-cap: "Level of musical experience."
+
+make_freq_table(demo_df, hearing_experience, "Musical experience")
+```
+
+```{r echo=FALSE}
+#| label: tbl-hearing-imp
+#| tbl-cap: "Self-reported hearing impairments."
+
+make_freq_table(demo_df, hearing_impairments, "Hearing impairments")
+```
+
+```{r echo=FALSE}
+#| label: tbl-taste-imp
+#| tbl-cap: "Self-reported taste/smell impairments."
+
+make_freq_table(demo_df, taste_impairments, "Taste/smell impairments")
+```
+
+```{r echo=FALSE}
+#| label: tbl-device
+#| tbl-cap: "Listening device used during the experiment."
+
+make_freq_table(demo_df, device, "Listening device")
+```
+
+The analyzed sample comprises 49 participants. The majority identify as White/European American, and most report no hearing impairments or difficulties with taste/smell perception.
+
+
+## Data Preprocessing
+
+### Long-format restructuring
+
+Raw perceptual ratings are reshaped into long format, yielding one row per participant $\times$ track $\times$ taste dimension. The five dimensions (salty, sweet, sour, bitter, spicy) are extracted from column-name indices.
+
+```{r}
+d_long <- raw_df %>%
+  select(participant, matches("_[1-5]$")) %>%
+  pivot_longer(
+    cols = -participant,
+    names_to = c("brano", "idx"),
+    names_pattern = "^(.*)_([1-5])$",
+    values_to = "rating"
+  ) %>%
+  mutate(
+    idx = as.integer(idx),
+    gusto = recode(
+      idx,
+      `1` = "salato",
+      `2` = "dolce",
+      `3` = "acido",
+      `4` = "amaro",
+      `5` = "piccante"
+    )
+  ) %>%
+  select(participant, brano, gusto, rating) %>%
+  filter(!is.na(rating)) %>%
+  mutate(brano = as.character(brano))
+```
+
+### Outlier removal
+
+Participants who provided identical ratings across all items (zero variance) are excluded, as they provide no informative variation for estimating perceptual profiles.
+
+```{r}
+participant_variance <- d_long %>%
+  group_by(participant) %>%
+  summarise(var_rating = var(rating, na.rm = TRUE))
+
+participants_to_remove <- participant_variance %>%
+  filter(var_rating == 0) %>%
+  pull(participant)
+
+d_long <- d_long %>%
+  filter(!participant %in% participants_to_remove)
+```
+
+```{r}
+d_long %>% count(participant) %>% summary()
+n_participants <- n_distinct(d_long$participant)
+cat("Number of participants:", n_participants, "\n")
+```
+
+No zero-variance participants were identified; all observations are retained.
+
+### Target vector import
+
+```{r}
+target <- read_excel("data/target_vectors.xlsx")
+```
+
+### Z-score normalization
+
+To make taste dimensions comparable and align scales between perceptual ratings and target vectors, all variables are standardized (mean = 0, SD = 1) separately per taste dimension.
+
+```{r}
+d_long <- d_long %>%
+  group_by(gusto) %>%
+  mutate(rating_z = as.numeric(scale(rating))) %>%
+  ungroup()
+```
+
+```{r echo=FALSE}
+#| label: fig-zscore-boxplot
+#| fig-cap: "Distribution of z-score normalized ratings per taste dimension. The dashed line indicates zero (post-normalization mean)."
+
+ggplot(d_long, aes(x = gusto, y = rating_z)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.15, size = 0.8) +
+  scale_x_discrete(labels = taste_labels_en) +
+  theme_minimal() +
+  labs(
+    x = "Taste dimension",
+    y = "Normalized rating (z-score)"
+  )
+```
+
+After normalization, all distributions are centered around zero (@fig-zscore-boxplot). Variability differs across dimensions, reflecting heterogeneous perceptual associations.
+
+```{r}
+target_z <- target %>%
+  mutate(brano = as.character(brano)) %>%
+  mutate(across(c(acido, amaro, dolce, piccante, salato), as.numeric)) %>%
+  mutate(across(c(acido, amaro, dolce, piccante, salato),
+            ~ as.vector(scale(.)))) %>%
+  arrange(ordered_food(brano))
+```
+
+```{r}
+#| echo: false
+#| label: tbl-target-z
+#| tbl-cap: "Z-score normalized target vectors per taste dimension."
+target_z %>%
+  mutate(
+    Track = ordered_food_label(brano)
+  ) %>%
+  arrange(Track) %>%
+  select(Track, acido, amaro, dolce, piccante, salato) %>%
+  rename(
+    Sour = acido,
+    Bitter = amaro,
+    Sweet = dolce,
+    Spicy = piccante,
+    Salty = salato
+  ) %>%
+  knitr::kable(digits = 3)
+```
+
+
+## PCA of Target Vectors
+
+PCA is applied to the normalized target vectors to explore the structure of tracks in the multidimensional taste space. The projection onto the first two principal components (@fig-pca-target) identifies clusters of tracks with similar gustatory profiles and reveals relationships among taste dimensions.
+
+```{r}
+#| echo: false
+#| label: fig-pca-target
+#| fig-cap: "PCA of normalized target vectors. Each point represents a track; arrows indicate taste dimension loadings. Axes show the percentage of variance explained."
+
+tgt_pca_data <- target_z %>% select(acido, amaro, dolce, piccante, salato)
+tgt_pca_res <- prcomp(tgt_pca_data, center = TRUE, scale. = TRUE)
+
+tgt_var_expl <- summary(tgt_pca_res)$importance[2, ] * 100
+
+tgt_pca_df <- tibble(
+  id = seq_len(nrow(target_z)),
+  brano = target_z$brano,
+  PC1 = tgt_pca_res$x[, 1],
+  PC2 = tgt_pca_res$x[, 2]
+)
+
+tgt_loadings <- as.data.frame(tgt_pca_res$rotation[, 1:2])
+tgt_loadings$variable <- rownames(tgt_loadings)
+tgt_loadings$variable_label <- unname(taste_labels_en[tgt_loadings$variable])
+tgt_scale_factor <- max(abs(tgt_pca_df$PC1), abs(tgt_pca_df$PC2)) /
+  max(abs(tgt_loadings$PC1), abs(tgt_loadings$PC2)) * 0.8
+
+ggplot(tgt_pca_df, aes(x = PC1, y = PC2, shape = factor(id))) +
+  geom_point(size = 3) +
+  geom_text(aes(label = id), nudge_y = 0.15, size = 3) +
+  geom_segment(
+    data = tgt_loadings,
+    aes(x = 0, y = 0, xend = PC1 * tgt_scale_factor, yend = PC2 * tgt_scale_factor),
+    arrow = arrow(length = unit(0.2, "cm")),
+    color = "red", linewidth = 0.7,
+    inherit.aes = FALSE
+  ) +
+  geom_text(
+    data = tgt_loadings,
+    aes(x = PC1 * tgt_scale_factor * 1.12, y = PC2 * tgt_scale_factor * 1.12, label = variable_label),
+    color = "red", size = 3.5, fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  scale_shape_manual(
+    values = rep(16, nrow(tgt_pca_df)),
+    labels = setNames(to_food_label(tgt_pca_df$brano), tgt_pca_df$id),
+    name = "Track"
+  ) +
+  guides(shape = guide_legend(ncol = 1, override.aes = list(size = 0))) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    legend.text = element_text(size = 7),
+    legend.title = element_text(size = 9, face = "bold"),
+    legend.key.size = unit(0.4, "cm")
+  ) +
+  labs(
+    x = paste0("PC1 (", round(tgt_var_expl[1], 1), "%)"),
+    y = paste0("PC2 (", round(tgt_var_expl[2], 1), "%)")
+  )
+```
+
+The PCA (@fig-pca-target) reveals systematic relationships among taste dimensions in the target space: sweetness is oriented opposite to salty and spicy, indicating anticorrelation; bitter and sour co-vary; and salty and spicy are aligned.
+
+
+## Descriptive Statistics by Taste Dimension
+
+Mean and standard deviation of perceptual ratings per taste dimension are reported in @tbl-descriptive-taste, with distributions visualized in @fig-boxplot-taste and @fig-histograms-taste.
+
+```{r}
+descriptive_taste <- d_long %>%
+  group_by(gusto) %>%
+  summarise(
+    Mean = mean(rating),
+    SD = sd(rating),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    gusto = unname(taste_labels_en[gusto]),
+    gusto = factor(gusto, levels = unname(taste_labels_en[c("salato", "dolce", "acido", "amaro", "piccante")]))
+  )
+```
+
+```{r}
+#| echo: false
+#| label: tbl-descriptive-taste
+#| tbl-cap: "Descriptive statistics of perceptual ratings per taste dimension (Likert 1--7)."
+descriptive_taste %>%
+  gt() %>%
+  fmt_number(
+    columns = c(Mean, SD),
+    decimals = 2
+  ) %>%
+  cols_label(gusto = "Taste dimension") %>%
+  cols_align(align = "left", columns = 1) %>%
+  cols_align(align = "center", columns = -1)
+```
+
+```{r}
+#| echo: false
+#| label: fig-boxplot-taste
+#| fig-cap: "Boxplots of perceptual ratings (Likert 1--7) per taste dimension."
+
+ggplot(d_long, aes(x = gusto, y = rating)) +
+  geom_boxplot() +
+  theme_minimal() +
+  scale_x_discrete(labels = taste_labels_en) +
+  labs(x = "Taste dimension", y = "Rating (Likert 1-7)")
+```
+
+```{r}
+#| echo: false
+#| label: fig-histograms-taste
+#| fig-cap: "Histograms of perceptual ratings per taste dimension, showing scale utilization."
+
+ggplot(d_long, aes(x = rating)) +
+  geom_histogram(binwidth = 1, boundary = 0.5) +
+  facet_wrap(~ gusto, labeller = labeller(gusto = taste_labels_en)) +
+  theme_minimal() +
+  labs(x = "Rating (Likert 1-7)", y = "Frequency")
+```
+
+All dimensions span the full Likert range. Sour, bitter, sweet, and spicy ratings are concentrated at lower values but maintain non-trivial counts at intermediate and high levels. Salty shows a more centered distribution. No strong floor or ceiling effects are evident, suggesting adequate scale utilization.
+
+
+## Descriptive Statistics by Track
+
+### Rating counts per track
+
+```{r}
+n_per_track <- d_long %>%
+  distinct(participant, brano) %>%
+  count(brano, name = "N_ratings") %>%
+  mutate(
+    taste_group = unname(food_group[brano]),
+    Track = ordered_food_label(brano)
+  )
+```
+
+```{r}
+#| echo: false
+#| label: fig-n-ratings
+#| fig-cap: "Number of ratings available per track."
+
+ggplot(n_per_track, aes(x = Track, y = N_ratings)) +
+  geom_col() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Track", y = "Number of ratings")
+```
+
+```{r}
+#| echo: false
+#| label: tbl-n-ratings
+#| tbl-cap: "Number of ratings per track, ordered by taste-group clusters."
+
+n_per_track %>%
+  arrange(Track) %>%
+  select(taste_group, Track, N_ratings) %>%
+  gt() %>%
+  cols_label(
+    taste_group = "Taste group",
+    Track = "Track",
+    N_ratings = "Number of ratings"
+  ) %>%
+  cols_align(align = "left", columns = 1) %>%
+  cols_align(align = "center", columns = -1)
+```
+
+The number of ratings is not perfectly uniform across tracks (@fig-n-ratings, @tbl-n-ratings). This imbalance is accounted for in subsequent analyses.
+
+### Mean perceptual vectors
+
+For each track, the mean perceptual vector is computed as the average of z-score normalized ratings across all participants who evaluated that track.
+
+```{r}
+p_mean <- d_long %>%
+  group_by(brano, gusto) %>%
+  summarise(mean_rating = mean(rating_z), .groups = "drop")
+
+p_mean_wide <- p_mean %>%
+  pivot_wider(names_from = gusto, values_from = mean_rating) %>%
+  arrange(ordered_food(brano))
+```
+
+```{r echo=FALSE, results='hide'}
+setdiff(p_mean_wide$brano, target_z$brano)
+setdiff(target_z$brano, p_mean_wide$brano)
+```
+
+```{r}
+merged <- p_mean_wide %>%
+  inner_join(target_z, by = "brano", suffix = c("_perc", "_tgt"))
+```
+
+```{r echo=FALSE, results='hide'}
+dim(merged)
+```
+
+```{r}
+#| echo: false
+#| label: tbl-mean-perceptual
+#| tbl-cap: "Mean perceptual vectors per track (z-scores). Positive values indicate above-average perception; negative values indicate below-average."
+
+p_mean_wide %>%
+  mutate(
+    taste_group = unname(food_group[brano]),
+    Track = ordered_food_label(brano)
+  ) %>%
+  arrange(Track) %>%
+  select(taste_group, Track, acido, amaro, dolce, piccante, salato) %>%
+  gt() %>%
+  fmt_number(columns = c(acido, amaro, dolce, piccante, salato), decimals = 3) %>%
+  cols_label(
+    taste_group = "Taste group",
+    Track = "Track",
+    acido = "Sour",
+    amaro = "Bitter",
+    dolce = "Sweet",
+    piccante = "Spicy",
+    salato = "Salty"
+  ) %>%
+  cols_align(align = "left", columns = 1) %>%
+  cols_align(align = "center", columns = -1)
+```
+
+
+## PCA of Mean Perceptual Vectors
+
+PCA is applied to the mean perceptual vectors to explore how tracks are organized in the perceptual taste space.
+
+```{r}
+#| echo: false
+#| label: fig-pca-perceptual
+#| fig-cap: "PCA of mean perceptual vectors per track. Arrows show taste dimension loadings on the first two principal components."
+
+pca_data <- p_mean_wide %>% select(acido, amaro, dolce, piccante, salato)
+pca_res <- prcomp(pca_data, center = TRUE, scale. = TRUE)
+
+var_expl <- summary(pca_res)$importance[2, ] * 100
+
+pca_df <- tibble(
+  id = seq_len(nrow(p_mean_wide)),
+  brano = p_mean_wide$brano,
+  PC1 = pca_res$x[, 1],
+  PC2 = pca_res$x[, 2]
+)
+
+loadings <- as.data.frame(pca_res$rotation[, 1:2])
+loadings$variable <- rownames(loadings)
+loadings$variable_label <- unname(taste_labels_en[loadings$variable])
+scale_factor <- max(abs(pca_df$PC1), abs(pca_df$PC2)) /
+  max(abs(loadings$PC1), abs(loadings$PC2)) * 0.8
+
+ggplot(pca_df, aes(x = PC1, y = PC2, shape = factor(id))) +
+  geom_point(size = 3) +
+  geom_text(aes(label = id), nudge_y = 0.15, size = 3) +
+  geom_segment(
+    data = loadings,
+    aes(x = 0, y = 0, xend = PC1 * scale_factor, yend = PC2 * scale_factor),
+    arrow = arrow(length = unit(0.2, "cm")),
+    color = "red", linewidth = 0.7,
+    inherit.aes = FALSE
+  ) +
+  geom_text(
+    data = loadings,
+    aes(x = PC1 * scale_factor * 1.12, y = PC2 * scale_factor * 1.12, label = variable_label),
+    color = "red", size = 3.5, fontface = "bold",
+    inherit.aes = FALSE
+  ) +
+  scale_shape_manual(
+    values = rep(16, nrow(pca_df)),
+    labels = setNames(to_food_label(pca_df$brano), pca_df$id),
+    name = "Track"
+  ) +
+  guides(shape = guide_legend(ncol = 1, override.aes = list(size = 0))) +
+  theme_minimal() +
+  theme(
+    legend.position = "right",
+    legend.text = element_text(size = 7),
+    legend.title = element_text(size = 9, face = "bold"),
+    legend.key.size = unit(0.4, "cm")
+  ) +
+  labs(
+    x = paste0("PC1 (", round(var_expl[1], 1), "%)"),
+    y = paste0("PC2 (", round(var_expl[2], 1), "%)")
+  )
+```
+
+The perceptual PCA (@fig-pca-perceptual) shows systematic co-variation patterns among taste dimensions: sweet and bitter are opposed, salty and spicy are aligned, and sour emerges as a relatively distinct dimension. The global geometry of the perceptual space appears qualitatively consistent with the target space (@fig-pca-target), though without point-level correspondence for individual tracks.
+
+
+## Target--Perceptual Comparison
+
+### Euclidean distances
+
+For each track, the Euclidean distance between the mean perceptual vector and the corresponding target vector quantifies the degree of alignment.
+
+```{r}
+dist_per_track <- merged %>%
+  rowwise() %>%
+  mutate(
+    d = sqrt(
+      (acido_tgt - acido_perc)^2 +
+      (amaro_tgt - amaro_perc)^2 +
+      (dolce_tgt - dolce_perc)^2 +
+      (piccante_tgt - piccante_perc)^2 +
+      (salato_tgt - salato_perc)^2
+    )
+  ) %>%
+  ungroup() %>%
+  select(brano, d)
+
+mean_distance <- mean(dist_per_track$d)
+```
+
+```{r}
+#| echo: false
+#| label: tbl-distances
+#| tbl-cap: "Euclidean distance between target and mean perceptual vector per track."
+
+dist_per_track %>%
+  mutate(
+    taste_group = unname(food_group[brano]),
+    Track = ordered_food_label(brano)
+  ) %>%
+  arrange(Track) %>%
+  select(taste_group, Track, d) %>%
+  gt() %>%
+  fmt_number(columns = d, decimals = 3) %>%
+  cols_label(
+    taste_group = "Taste group",
+    Track = "Track",
+    d = "Distance"
+  ) %>%
+  cols_align(align = "left", columns = 1) %>%
+  cols_align(align = "center", columns = -1) %>%
+  tab_source_note(
+    source_note = paste0("Mean observed distance: ", round(mean_distance, 3))
+  )
+```
+
+### Weighted mean distance
+
+Since the number of ratings per track is not uniform, a weighted mean distance is computed to assess robustness. The weight for track $i$ is $w_i = N_i / M$ where $N_i$ is the number of participants who evaluated track $i$.
+
+```{r}
+n_per_track <- d_long %>%
+  distinct(participant, brano) %>%
+  count(brano, name = "N_i")
+
+dist_weighted <- dist_per_track %>%
+  left_join(n_per_track, by = "brano") %>%
+  mutate(peso = N_i / sum(N_i))
+```
+
+```{r}
+#| echo: false
+#| label: tbl-weighted-distance
+#| tbl-cap: "Comparison of unweighted and weighted mean distances."
+
+d_obs_weighted <- sum(dist_weighted$d * dist_weighted$peso)
+
+tibble(
+  Method = c("Unweighted mean", "Weighted mean (by N)"),
+  `Mean distance` = c(mean_distance, d_obs_weighted)
+) %>%
+  gt() %>%
+  fmt_number(columns = `Mean distance`, decimals = 4) %>%
+  cols_align(align = "left", columns = 1) %>%
+  cols_align(align = "center", columns = -1)
+```
+
+The weighted and unweighted means are virtually identical (@tbl-weighted-distance), indicating robustness to the rating-count imbalance. The unweighted mean is used for subsequent analyses.
+
+
+### Structural consistency
+
+Two complementary tests assess whether the geometric structure of tracks is preserved between target and perceptual spaces:
+
+- **Mantel test**: correlates the 20 $\times$ 20 distance matrices from the two spaces (9,999 permutations).
+- **Procrustes analysis (PROTEST)**: measures configuration overlap after optimal rotation, translation, and scaling (9,999 permutations).
+
+```{r}
+brani_ord <- food_order[food_order %in% merged$brano]
+merged_ord <- merged %>%
+  mutate(brano = factor(brano, levels = brani_ord)) %>%
+  arrange(brano)
+
+mat_target <- merged_ord %>%
+  select(acido_tgt, amaro_tgt, dolce_tgt, piccante_tgt, salato_tgt) %>%
+  as.matrix()
+
+mat_perc <- merged_ord %>%
+  select(acido_perc, amaro_perc, dolce_perc, piccante_perc, salato_perc) %>%
+  as.matrix()
+
+rownames(mat_target) <- rownames(mat_perc) <- brani_ord
+
+dist_target <- dist(mat_target)
+dist_perc <- dist(mat_perc)
+
+set.seed(123)
+mantel_res <- mantel(dist_target, dist_perc, method = "pearson", permutations = 9999)
+
+set.seed(123)
+procrustes_res <- protest(mat_target, mat_perc, permutations = 9999)
+```
+
+```{r}
+#| echo: false
+#| label: tbl-structural-consistency
+#| tbl-cap: "Structural consistency tests between target and perceptual spaces."
+
+tibble(
+  Test = c("Mantel", "Procrustes (PROTEST)"),
+  Statistic = c(
+    paste0("r = ", round(mantel_res$statistic, 4)),
+    paste0("m\u00b2 = ", round(1 - procrustes_res$ss, 4))
+  ),
+  `p-value` = c(mantel_res$signif, procrustes_res$signif)
+) %>%
+  gt() %>%
+  fmt_number(columns = `p-value`, decimals = 4) %>%
+  cols_align(align = "left", columns = 1) %>%
+  cols_align(align = "center", columns = -1)
+```
+
+Both tests show significant but imperfect structural alignment (@tbl-structural-consistency). The Mantel test indicates a moderate positive correlation between distance matrices, while Procrustes analysis confirms significant configuration overlap after optimal alignment.
+
+
+### Distance heatmap
+
+```{r}
+#| echo: false
+#| label: fig-heatmap
+#| fig-cap: "Euclidean distance heatmap between mean perceptual vectors (rows) and target vectors (columns). The diagonal represents matched track pairs."
+
+brani <- food_order[food_order %in% merged$brano]
+merged_ord <- merged %>%
+  mutate(brano = factor(brano, levels = brani)) %>%
+  arrange(brano)
+
+mat_perc <- merged_ord %>%
+  select(acido_perc, amaro_perc, dolce_perc, piccante_perc, salato_perc) %>%
+  as.matrix()
+
+mat_tgt <- merged_ord %>%
+  select(acido_tgt, amaro_tgt, dolce_tgt, piccante_tgt, salato_tgt) %>%
+  as.matrix()
+
+rownames(mat_perc) <- paste0(brani, "_perc")
+rownames(mat_tgt)  <- paste0(brani, "_tgt")
+
+both <- rbind(mat_perc, mat_tgt)
+D <- as.matrix(dist(both))
+
+rows_perc <- paste0(brani, "_perc")
+cols_tgt  <- paste0(brani, "_tgt")
+D_pt <- D[rows_perc, cols_tgt]
+
+df_heat <- as.data.frame(as.table(D_pt)) %>%
+  rename(perceived_track = Var1, target_track = Var2, distance = Freq) %>%
+  mutate(
+    perceived_track = sub("_perc$", "", perceived_track),
+    target_track    = sub("_tgt$", "", target_track),
+    target_track = factor(to_food_label(target_track), levels = unname(food_labels_en[brani])),
+    perceived_track = factor(to_food_label(perceived_track), levels = rev(unname(food_labels_en[brani])))
+  )
+
+ggplot(df_heat, aes(x = target_track, y = perceived_track, fill = distance)) +
+  geom_tile() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid = element_blank()) +
+  labs(
+    x = "Target vector",
+    y = "Mean perceptual vector",
+    fill = "Distance"
+  )
+```
+
+The diagonal is not strongly pronounced in @fig-heatmap: for many tracks, the minimum distance does not fall on the diagonal, reflecting the limited single-track alignment noted above. However, some tracks show notably low diagonal distances (e.g., Pudding, Milk Chocolate, Diavola Pizza, Radicchio, Green Tea, Tiramisu), and no diagonal cell has an extremely high distance.
+
+### Best-match analysis
+
+```{r}
+#| echo: false
+#| label: tbl-best-match
+#| tbl-cap: "Best-match target for each perceptual vector. For mismatches, the distance to the corresponding target is also reported."
+
+best_match_tbl <- df_heat %>%
+  group_by(perceived_track) %>%
+  slice_min(order_by = distance, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  transmute(
+    track = as.character(perceived_track),
+    nearest_target = as.character(target_track),
+    min_distance = distance,
+    diagonal_match = (as.character(perceived_track) == as.character(target_track))
+  )
+
+diag_tbl <- df_heat %>%
+  transmute(
+    track = as.character(perceived_track),
+    target = as.character(target_track),
+    diag_distance = distance
+  ) %>%
+  filter(track == target) %>%
+  select(track, diag_distance)
+
+match_table <- best_match_tbl %>%
+  left_join(diag_tbl, by = "track") %>%
+  mutate(
+    corresponding_distance = ifelse(diagonal_match, NA_real_, diag_distance)
+  ) %>%
+  select(track, nearest_target, min_distance, corresponding_distance, diagonal_match) %>%
+  arrange(min_distance)
+
+match_table %>%
+  gt() %>%
+  fmt_number(columns = c(min_distance, corresponding_distance), decimals = 3) %>%
+  cols_label(
+    track = "Perceptual vector",
+    nearest_target = "Nearest target",
+    min_distance = "Min distance",
+    corresponding_distance = "Distance to own target",
+    diagonal_match = "Diagonal match"
+  ) %>%
+  cols_align("left", columns = c(track, nearest_target)) %>%
+  cols_align("center", columns = c(min_distance, corresponding_distance, diagonal_match)) %>%
+  tab_source_note(
+    source_note = paste0(
+      "Diagonal matches: ",
+      sum(match_table$diagonal_match), "/", nrow(match_table),
+      " (", round(mean(match_table$diagonal_match) * 100, 1), "%)."
+    )
+  )
+```
+
+For many tracks, the nearest target does not coincide with the corresponding target (@tbl-best-match). However, mismatches tend to occur between tracks with similar gustatory profiles, and the distance to the corresponding target often remains close to the minimum. This pattern is consistent with global structural coherence despite limited point-level alignment.
+
+
+## Permutation Test {#sec-permutation}
+
+To test whether the observed mean distance is smaller than expected under random target--perceptual associations, we run a permutation test with 10,000 iterations. In each iteration, perceptual vectors are randomly reassigned to targets and the mean distance is recomputed, generating a null distribution.
+
+```{r}
+set.seed(123)
+n_perm <- 10000
+
+d_perm_means <- numeric(n_perm)
+d_obs <- mean(dist_per_track$d)
+
+for (k in 1:n_perm) {
+  merged_perm <- merged
+  idx <- sample(1:nrow(merged_perm))
+  merged_perm[, c("acido_perc", "amaro_perc", "dolce_perc",
+                  "piccante_perc", "salato_perc")] <-
+    merged_perm[idx, c("acido_perc", "amaro_perc", "dolce_perc",
+                       "piccante_perc", "salato_perc")]
+
+  d_k <- merged_perm %>%
+    rowwise() %>%
+    mutate(
+      d = sqrt(
+        (acido_tgt - acido_perc)^2 +
+          (amaro_tgt - amaro_perc)^2 +
+          (dolce_tgt - dolce_perc)^2 +
+          (piccante_tgt - piccante_perc)^2 +
+          (salato_tgt - salato_perc)^2
+      )
+    ) %>%
+    ungroup()
+
+  d_perm_means[k] <- mean(d_k$d)
+}
+
+Dnull <- d_perm_means
+p_value <- mean(Dnull <= d_obs)
+```
+
+```{r echo=FALSE}
+p_value_table <- ifelse(
+  p_value < 0.001,
+  "<<0.001",
+  formatC(p_value, format = "f", digits = 4)
+)
+```
+
+```{r}
+#| echo: false
+#| label: tbl-permutation
+#| tbl-cap: "Permutation test results."
+
+tibble(
+  Permutations = n_perm,
+  `Observed mean distance` = d_obs,
+  `Null mean` = mean(Dnull),
+  `Null SD` = sd(Dnull),
+  `p-value` = p_value_table
+) %>%
+  gt() %>%
+  fmt_number(
+    columns = c(`Observed mean distance`, `Null mean`, `Null SD`),
+    decimals = 4
+  ) %>%
+  cols_align(everything(), align = "center")
+```
+
+```{r}
+#| echo: false
+#| label: fig-null-distribution
+#| fig-cap: "Null distribution of permuted mean distances. The dashed line marks the observed mean distance, located in the extreme left tail."
+
+df_null <- data.frame(d = Dnull)
+
+p_value_label <- ifelse(
+  p_value < 0.001,
+  "p << 0.001",
+  paste0("p = ", signif(p_value, 3))
+)
+
+ggplot(df_null, aes(x = d)) +
+  geom_histogram(
+    binwidth = 0.02,
+    fill = "#4C72B0",
+    color = "white",
+    linewidth = 0.2
+  ) +
+  geom_vline(
+    xintercept = d_obs,
+    linetype = "dashed",
+    linewidth = 1,
+    color = "black"
+  ) +
+  theme_classic() +
+  labs(
+    x = "Permuted mean distance",
+    y = "Frequency"
+  )
+```
+
+The observed mean distance falls in the extreme left tail of the null distribution (@fig-null-distribution), yielding p << 0.001 (@tbl-permutation). The perceptual--target alignment is significantly greater than expected by chance.
+
+
+### Effect size
+
+The effect size is defined as a z-score relative to the null distribution:
+
+$$
+z_{\text{eff}} = \frac{\mu_{\text{null}} - \bar{d}_{\text{obs}}}{\sigma_{\text{null}}}
+$$
+
+```{r}
+effect_size_z <- (mean(Dnull) - d_obs) / sd(Dnull)
+```
+
+```{r}
+#| echo: false
+#| label: tbl-effect-size
+#| tbl-cap: "Effect size expressed as a z-score relative to the null distribution."
+
+tibble(
+  `Effect size (z)` = effect_size_z
+) %>%
+  gt() %>%
+  fmt_number(columns = `Effect size (z)`, decimals = 3) %>%
+  cols_align(everything(), align = "center")
+```
+
+The effect size is large (@tbl-effect-size), indicating that the observed mean distance lies several standard deviations below the null mean. This confirms that the perceptual--target alignment is not only statistically significant but also substantively meaningful.
+
+
+## Conclusions
+
+The analysis demonstrates that associations between the gustatory profiles assigned by the computational model and listeners' perceptual ratings exhibit a non-random structure. The observed mean distance between perceptual and target vectors is significantly smaller than expected under random assignment (permutation test, p << 0.001), with a large effect size.
+
+Global structural coherence between the target and perceptual spaces is supported by both the Mantel test and Procrustes analysis. However, single-track alignment is limited: only a fraction of tracks have their nearest target matching the corresponding target, with mismatches occurring primarily among tracks with similar gustatory profiles.
+
+These results, combined with the cross-modal dataset analysis in @sec-cross-modal, provide converging evidence that the computational sonic-seasoning model captures meaningful regularities in music-taste associations, while highlighting the challenges of achieving precise per-track correspondence.

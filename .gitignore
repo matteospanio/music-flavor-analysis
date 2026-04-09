@@ -1,11 +1,30 @@
+# R
 .Rproj.user
 .Rhistory
 .RData
 .Ruserdata
-.quarto
-*.pdf
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Quarto
+.quarto/
+_output/
+_freeze/
+*.quarto_ipynb
+
+# IDE
+.claude/
+.vscode/
+*.Rproj
+
+# OS
+.DS_Store
+
+# uv
+uv.lock
 
 /.quarto/
 **/*.quarto_ipynb
-*.html
-music-flavor-analysis_files/
