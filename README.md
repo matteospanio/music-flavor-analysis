@@ -1,5 +1,7 @@
 # Cross-Modal Music-Flavor Correspondences
 
+[![arXiv](https://img.shields.io/badge/arXiv-2604.10632-b31b1b.svg)](https://arxiv.org/abs/2604.10632)
+
 Companion code and analysis notebooks for the paper:
 
 > **Multimodal Dataset Normalization and Perceptual Validation for Music-Taste Correspondences**
@@ -72,11 +74,13 @@ Code is released under the [MIT License](LICENSE). Datasets are subject to their
 If you use this code or data, please cite:
 
 ```bibtex
-@inproceedings{spanio2026multimodal,
-  title     = {Multimodal Dataset Normalization and Perceptual Validation
-               for Music-Taste Correspondences},
-  author    = {Spanio, Matteo and Frezzato, Valentina and Rod{\`a}, Antonio},
-  booktitle = {Proceedings of the Sound and Music Computing Conference (SMC)},
-  year      = {2026}
+@misc{spanio2026multimodaldatasetnormalizationperceptual,
+      title={Multimodal Dataset Normalization and Perceptual Validation for Music-Taste Correspondences}, 
+      author={Matteo Spanio and Valentina Frezzato and Antonio Rodà},
+      year={2026},
+      eprint={2604.10632},
+      archivePrefix={arXiv},
+      primaryClass={cs.SD},
+      url={https://arxiv.org/abs/2604.10632}, 
 }
 ```
